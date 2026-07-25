@@ -1,0 +1,40 @@
+                    GNU GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+SpendLens - Privacy-first UPI expense tracker
+Copyright (C) 2026  Subrata Choudhury
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+ADDITIONAL TERMS:
+
+1. The app's positioning statement — "The UPI tracker that can't leak 
+   your data — because it can't reach the internet" — is a verifiable 
+   claim based on the absence of INTERNET permission in the manifest. 
+   Any fork must maintain this property or remove the claim.
+
+2. No closed-source forks. This is copyleft. If you distribute a 
+   modified version, you must provide full source code under GPLv3.
+
+3. The design system (colors, typography, tap bar visualization) is 
+   part of the product identity. You're free to modify it, but 
+   derivatives should be visually distinguishable to avoid user confusion.
+
+4. The merchant directory and parser templates are data, not code, 
+   but are covered by this license. Contributions to the template 
+   corpus are welcomed and will be credited.
+
+Full license text: https://www.gnu.org/licenses/gpl-3.0.txt

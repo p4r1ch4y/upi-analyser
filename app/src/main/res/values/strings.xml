@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SpendLens</string>
+    <string name="notification_listener_label">UPI Transaction Tracker</string>
+    <string name="notification_listener_description">Captures UPI transaction notifications to track spending in real-time. All data stays on your device.</string>
+    
+    <!-- Foreground service notification -->
+    <string name="service_notification_title">SpendLens is tracking</string>
+    <string name="service_notification_text">Spent today: %s</string>
+    
+    <!-- Onboarding -->
+    <string name="onboarding_welcome">The UPI tracker that can\'t leak your data</string>
+    <string name="onboarding_subtitle">Because it can\'t reach the internet</string>
+    <string name="onboarding_notification_permission_title">Connect your payment apps</string>
+    <string name="onboarding_notification_permission_body">SpendLens reads UPI transaction notifications to track spending. Your data never leaves this device.</string>
+    
+    <!-- Home screen -->
+    <string name="today">Today</string>
+    <string name="taps_merchants">%1$d taps · %2$d merchants</string>
+    <string name="name_this_merchant">Name this merchant</string>
+    <string name="split_n_ways">Split %d ways</string>
+    <string name="paid_amount">₹%s paid</string>
+    
+    <!-- Actions -->
+    <string name="add_manual_transaction">Add transaction</string>
+    <string name="split_this">Split this</string>
+    <string name="edit_merchant">Edit merchant</string>
+    
+    <!-- Empty states -->
+    <string name="no_transactions_yet">Your first payment will appear here within seconds of you making it.</string>
+    <string name="test_transaction">Send yourself ₹1 to test</string>
+</string>
