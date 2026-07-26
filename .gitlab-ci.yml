@@ -11,9 +11,10 @@
 # Mark them **Protected** and protect the `v*` tag pattern, so the key is only
 # ever exposed to a pipeline running on a tag you created.
 #
-# Without those variables the release job is skipped rather than failing, and the
-# build still produces unsigned APKs — which is exactly what F-Droid wants, since
-# it signs with its own key.
+# Without those variables the build still produces unsigned APKs — which is
+# exactly what F-Droid wants, since it signs with its own key. Note that an
+# unsigned APK cannot be installed, so a release cut without the key configured
+# would publish a broken download.
 
 stages:
   - test
@@ -93,9 +94,34 @@ assemble:
       - dist/
     expire_in: 1 month
 
+# GitLab releases cannot hold uploaded files the way GitHub releases can, and job
+# artifacts expire. Push the APKs into the generic package registry first, so the
+# release links to permanent, directly-downloadable URLs.
+upload-packages:
+  stage: release
+  image: curlimages/curl:latest
+  # The default before_script provisions the Android SDK. These two jobs run on
+  # tiny images with no apt and no JDK, so it has to be turned off or they fail
+  # before doing anything.
+  before_script: []
+  needs: ["assemble"]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  script:
+    - |
+      for f in dist/*; do
+        name=$(basename "$f")
+        echo "uploading $name"
+        curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          --upload-file "$f" \
+          "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/spendlens/$CI_COMMIT_TAG/$name"
+      done
+
 publish-release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script: []
+  needs: ["upload-packages"]
   rules:
     - if: $CI_COMMIT_TAG =~ /^v/
   script:
@@ -112,13 +138,19 @@ publish-release:
       * `full` — also reads bank SMS, which is the only way to recover spending
         from before you installed the app.
 
-      Verify the download against `SHA256SUMS.txt` in the job artifacts.
+      Verify the download against `SHA256SUMS.txt`, linked below.
 
       Note: these are signed with the project's own key, not F-Droid's. If you
       later install the F-Droid build you will have to uninstall this one first,
       which erases your ledger.
     assets:
       links:
-        - name: "APKs and checksums (job artifacts)"
-          url: "$CI_PROJECT_URL/-/jobs/artifacts/$CI_COMMIT_TAG/download?job=assemble"
+        - name: "SpendLens standard (recommended)"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/spendlens/$CI_COMMIT_TAG/SpendLens-$CI_COMMIT_TAG-app-standard-release.apk"
           link_type: package
+        - name: "SpendLens full (adds SMS reading)"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/spendlens/$CI_COMMIT_TAG/SpendLens-$CI_COMMIT_TAG-app-full-release.apk"
+          link_type: package
+        - name: "SHA256SUMS.txt"
+          url: "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/spendlens/$CI_COMMIT_TAG/SHA256SUMS.txt"
+          link_type: other
