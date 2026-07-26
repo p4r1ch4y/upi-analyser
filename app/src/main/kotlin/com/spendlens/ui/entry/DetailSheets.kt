@@ -50,6 +50,15 @@ import java.util.Locale
 
 private val HEADER_FORMAT = DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", Locale.ENGLISH)
 
+/** The message a row was read out of, as the sheet renders it. */
+data class SourceRecord(
+    val source: String,
+    val origin: String?,
+    val body: String,
+    val receivedAt: Long,
+    val templateId: String?
+)
+
 /** Everything the detail sheet needs, gathered by the caller. */
 data class TransactionDetail(
     val id: String,
@@ -59,7 +68,8 @@ data class TransactionDetail(
     val amountMinor: Long,
     val isCredit: Boolean,
     val split: Split?,
-    val tags: List<TagRef>
+    val tags: List<TagRef>,
+    val sources: List<SourceRecord> = emptyList()
 )
 
 /**
@@ -175,6 +185,9 @@ fun TransactionDetailSheet(
                 )
             }
 
+            // ------------------------------------------------------------ source
+            SourceSection(detail.sources, zone)
+
             // ----------------------------------------------------------- actions
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 22.dp),
@@ -208,6 +221,91 @@ fun TransactionDetailSheet(
  * These are the two numbers a split payment has, and conflating them is what makes
  * a tracker tell someone who fronted a group dinner that they spent ₹8,000 on food.
  */
+/**
+ * The message this row was read out of, verbatim.
+ *
+ * The point is auditability. Every other number on this sheet is the parser's
+ * conclusion; this is the evidence, so a wrong amount or a mislabelled merchant
+ * can be seen for what it is instead of being taken on faith. A payment caught on
+ * two rails shows both messages, which is also the clearest possible explanation
+ * of why it appears once rather than twice.
+ */
+@Composable
+private fun SourceSection(sources: List<SourceRecord>, zone: ZoneId) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+
+    Text(
+        text = stringResource(R.string.source).uppercase(Locale.ROOT),
+        style = typography.labelSmall,
+        color = colors.graphite,
+        modifier = Modifier.padding(top = 22.dp, bottom = 8.dp)
+    )
+
+    if (sources.isEmpty()) {
+        Text(
+            text = stringResource(R.string.source_none),
+            style = typography.bodySmall,
+            color = colors.mist
+        )
+        return
+    }
+
+    for (record in sources) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+                .background(colors.paperSunk, RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = sourceLabel(record),
+                    style = typography.labelSmall,
+                    color = colors.graphite
+                )
+                Text(
+                    text = Instant.ofEpochMilli(record.receivedAt).atZone(zone).format(HEADER_FORMAT),
+                    style = typography.labelSmall,
+                    color = colors.mist
+                )
+            }
+            // The body is what the bank or app actually wrote, so it is shown
+            // unwrapped and unedited - no truncation, no tidying.
+            Text(
+                text = record.body,
+                style = typography.bodySmall,
+                color = colors.ink,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            record.templateId?.let {
+                Text(
+                    text = stringResource(R.string.source_matched_by, it),
+                    style = typography.labelSmall,
+                    color = colors.mist,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+/** "Notification · com.phonepe.app", "SMS · VK-HDFCBK", "Typed in by you". */
+@Composable
+private fun sourceLabel(record: SourceRecord): String {
+    val kind = when (record.source) {
+        "NOTIFICATION" -> stringResource(R.string.source_notification)
+        "SMS" -> stringResource(R.string.source_sms)
+        "STATEMENT" -> stringResource(R.string.source_statement)
+        else -> stringResource(R.string.source_manual)
+    }
+    return record.origin?.let { "$kind · $it" } ?: kind
+}
+
 @Composable
 private fun SplitSummaryBox(split: Split, modifier: Modifier = Modifier) {
     val colors = SpendTheme.colors

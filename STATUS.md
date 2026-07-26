@@ -83,10 +83,19 @@ your share ₹600" lives, along with who has settled and what is still owed.
 can say "day 3 of 5" without anyone entering dates. Trips take the accent colour,
 plain tags stay neutral; identity always comes from the label, never the colour.
 
-**Insights** — a headline figure, two stat tiles, spend-by-day columns, and
-ranked bars for merchant, tag and rail. One mark language throughout: magnitude
-is length, colour is emphasis only. No categorical palette, no legends, no pie
-charts. Every bar is direct-labelled.
+**Source messages** — every row keeps the notification or SMS it was read out
+of, verbatim, shown under *Source* when the row is opened. A payment caught on
+two rails shows both messages, which is also the clearest explanation of why it
+appears once rather than twice. Everything else on that sheet is the parser's
+conclusion; this is the evidence, so a wrong amount can be seen for what it is
+rather than taken on faith.
+
+**Insights** — filter by expense or income over 7/30/90/365 days; group by
+merchant, tag or payment type; sort by amount, count or name. A balance card
+(in, out, net), a headline figure, stat tiles, spend-by-day columns, and ranked
+bars carrying each row's payment count and share of the total. One mark language
+throughout: magnitude is length, colour is emphasis only. No categorical
+palette, no legends, no pie charts.
 
 **Manual entry** — amount, counterparty, direction, payment type, editable date
 and time.
@@ -158,7 +167,12 @@ Verifiable on the artifact, not just claimed:
 
 - Encrypted backup and restore (Argon2id → XChaCha20-Poly1305 over SAF). The
   format is specified in `ARCHITECTURE_FLOW.md`; none of it is implemented.
-- Budgets and categories. Tables exist; no UI reaches them.
+- Budgets. The table exists; no UI reaches it.
+- Accounts as first-class objects, transfers between them, and per-category
+  spending limits — the things a conventional tracker's nav drawer offers. Each
+  needs its own model work rather than another screen.
+- Editing an amount or merchant after capture. The source message makes a
+  misparse visible; it cannot yet be corrected in place.
 - Merchant naming sheet. The review chip is rendered and
   `TransactionRepository.nameMerchant` works and is tested by construction, but
   the chip is not yet wired to a sheet.

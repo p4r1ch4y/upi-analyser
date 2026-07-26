@@ -129,6 +129,24 @@ CREATE TABLE split_participants (
 
 CREATE INDEX idx_split_participants ON split_participants(split_id);
 
+-- The message a transaction was read out of, kept verbatim.
+--
+-- A separate table rather than a column, because one transaction can legitimately
+-- have several sources: a payment seen as a UPI notification and again as a bank
+-- SMS is one row in `transactions`, and both messages are worth keeping. The
+-- ledger says what the app concluded; this says what it was told.
+CREATE TABLE source_messages (
+    id TEXT PRIMARY KEY NOT NULL,
+    txn_id TEXT NOT NULL REFERENCES transactions(id),
+    source TEXT NOT NULL,        -- NOTIFICATION, SMS, STATEMENT, MANUAL
+    origin TEXT,                 -- package name, SMS sender ID, or file name
+    body TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    template_id TEXT             -- the rule that matched, for tracing a misparse
+);
+
+CREATE INDEX idx_source_messages_txn ON source_messages(txn_id);
+
 CREATE TABLE seen_hashes (
     body_hash TEXT PRIMARY KEY NOT NULL,
     seen_at INTEGER NOT NULL
@@ -386,7 +404,7 @@ SELECT t.display_name AS label,
 FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
-  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND t.direction = :direction AND t.deleted_at IS NULL
 GROUP BY t.display_name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -398,7 +416,7 @@ SELECT coalesce(t.channel, 'UNKNOWN') AS label,
 FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
-  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND t.direction = :direction AND t.deleted_at IS NULL
 GROUP BY label
 ORDER BY effective_minor DESC;
 
@@ -411,7 +429,7 @@ JOIN transaction_tags tt ON tt.txn_id = t.id
 JOIN tags tg ON tg.id = tt.tag_id
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
-  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND t.direction = :direction AND t.deleted_at IS NULL
 GROUP BY tg.name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -459,3 +477,15 @@ WHERE counterparty_name_raw IS NOT NULL
   AND resolution_rung >= 3
   AND (source_mask & 2) != 0
   AND deleted_at IS NULL;
+
+-- Source messages ------------------------------------------------------------
+
+selectSourceMessages:
+SELECT * FROM source_messages WHERE txn_id = :txnId ORDER BY received_at;
+
+insertSourceMessage:
+INSERT INTO source_messages (id, txn_id, source, origin, body, received_at, template_id)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteSourceMessagesFor:
+DELETE FROM source_messages WHERE txn_id = :txnId;

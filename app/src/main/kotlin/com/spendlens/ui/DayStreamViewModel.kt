@@ -19,6 +19,7 @@ import com.spendlens.data.TransactionIngestor
 import com.spendlens.data.TransactionRepository
 import com.spendlens.service.UpiNotificationListener
 import com.spendlens.ui.entry.ManualEntry
+import com.spendlens.ui.entry.SourceRecord
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -234,6 +235,18 @@ class DayStreamViewModel(
     }
 
     suspend fun splitDetail(txnId: String): Split? = annotations.splitFor(txnId)
+
+    /** The messages this row was read out of, for the detail sheet's Source section. */
+    suspend fun sourcesFor(txnId: String): List<SourceRecord> =
+        repository.sourceMessages(txnId).map {
+            SourceRecord(
+                source = it.source,
+                origin = it.origin,
+                body = it.body,
+                receivedAt = it.received_at,
+                templateId = it.template_id
+            )
+        }
 
     // ------------------------------------------------------------------- tags
 

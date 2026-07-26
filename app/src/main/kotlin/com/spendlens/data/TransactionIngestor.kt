@@ -4,6 +4,7 @@ import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.FusedTxn
 import com.spendlens.core.model.Money
+import com.spendlens.core.model.MoneyFormat
 import com.spendlens.core.model.RawTxn
 import com.spendlens.core.model.Source
 import com.spendlens.core.model.TxnId
@@ -78,6 +79,7 @@ class TransactionIngestor(
                 confidence = maxOf(existing.confidence.toFloat(), resolution.confidence),
                 now = timestamp
             )
+            repository.recordSource(existing.id, raw, timestamp)
             return Result.Merged(existing.id, displayName, existing.amount_minor)
         }
 
@@ -108,6 +110,7 @@ class TransactionIngestor(
         )
 
         repository.insert(txn, templateId = raw.templateId, bodyHash = raw.bodyHash)
+        repository.recordSource(txn.id.value, raw, timestamp)
         return Result.Inserted(txn)
     }
 
@@ -177,6 +180,38 @@ class TransactionIngestor(
             updatedAt = timestamp
         )
         repository.insert(txn, templateId = null, bodyHash = null)
+        // Manual entries have no message behind them, so record what the user
+        // actually typed. The source section then reads honestly for every row
+        // rather than being blank on the ones the user is most sure about.
+        repository.recordSource(
+            txnId = txn.id.value,
+            raw = RawTxn(
+                source = Source.MANUAL,
+                observedAt = occurredAt,
+                occurredAt = occurredAt,
+                amountMinor = amountMinor,
+                currency = currency,
+                direction = direction,
+                counterpartyVpa = null,
+                counterpartyNameRaw = displayName,
+                rrn = null,
+                accountTail = null,
+                channel = channel,
+                instrument = null,
+                templateId = null,
+                bodyHash = "",
+                sourceBody = buildString {
+                    append(if (direction == Direction.DEBIT) "Spent " else "Received ")
+                    append(Money(amountMinor, currency).let { MoneyFormat.rupees(it.amountMinor) })
+                    append(if (direction == Direction.DEBIT) " to " else " from ")
+                    append(displayName)
+                    channel?.let { append(" · ").append(it.name) }
+                    note?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
+                },
+                sourceOrigin = null
+            ),
+            now = timestamp
+        )
         return txn
     }
 

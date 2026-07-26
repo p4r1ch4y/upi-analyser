@@ -4,6 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import com.spendlens.core.database.SelectDayStats
+import com.spendlens.core.database.Source_messages
 import com.spendlens.core.database.SpendLensDatabase
 import com.spendlens.core.database.Transactions
 import com.spendlens.core.model.Direction
@@ -92,6 +93,31 @@ class TransactionRepository(
         } ?: candidates.minByOrNull { kotlin.math.abs(it.occurred_at - at) }
     }
 
+    /**
+     * Records the message a transaction was read out of.
+     *
+     * Called for the first sighting and again for every rail that later fuses
+     * into the same row, so the detail sheet can show that a payment was seen
+     * twice and by whom.
+     */
+    suspend fun recordSource(txnId: String, raw: RawTxn, now: Long = System.currentTimeMillis()) =
+        withContext(io) {
+            val body = raw.sourceBody ?: return@withContext
+            queries.insertSourceMessage(
+                id = TxnId.generate(now).value,
+                txn_id = txnId,
+                source = raw.source.name,
+                origin = raw.sourceOrigin,
+                body = body,
+                received_at = raw.observedAt,
+                template_id = raw.templateId
+            )
+        }
+
+    suspend fun sourceMessages(txnId: String): List<Source_messages> = withContext(io) {
+        queries.selectSourceMessages(txnId).executeAsList()
+    }
+
     suspend fun insert(txn: FusedTxn, templateId: String?, bodyHash: String?) = withContext(io) {
         queries.insertTransaction(
             id = txn.id.value,
@@ -174,7 +200,12 @@ class TransactionRepository(
     }
 
     suspend fun softDelete(id: String, now: Long = System.currentTimeMillis()) = withContext(io) {
-        queries.softDeleteTransaction(deleted_at = now, updated_at = now, id = id)
+        database.transaction {
+            queries.softDeleteTransaction(deleted_at = now, updated_at = now, id = id)
+            // A soft-deleted row keeps its history, but the message is the most
+            // sensitive thing stored about it, so that goes for real.
+            queries.deleteSourceMessagesFor(id)
+        }
     }
 
     /**

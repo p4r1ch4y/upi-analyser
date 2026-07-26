@@ -2,6 +2,7 @@ package com.spendlens.ui.charts
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,7 +40,9 @@ data class BarDatum(
     val label: String,
     val valueMinor: Long,
     val caption: String? = null,
-    val emphasis: Boolean = false
+    val emphasis: Boolean = false,
+    /** Share of the report's total, 0..1. Rendered as a percentage on the bar. */
+    val share: Float? = null
 )
 
 /**
@@ -97,13 +100,14 @@ fun RankedBars(
                     )
                 }
 
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 5.dp)) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(BAR_THICKNESS)
-                        .padding(top = 5.dp)
                         .semantics {
-                            contentDescription = "${row.label}: ${MoneyFormat.rupees(row.valueMinor)}"
+                            contentDescription = "${row.label}: ${MoneyFormat.rupees(row.valueMinor)}" +
+                                (row.share?.let { ", ${(it * 100).toInt()} percent of the total" } ?: "")
                         }
                 ) {
                     // Track first, so a near-zero bar still reads as "a row that
@@ -122,8 +126,35 @@ fun RankedBars(
                         )
                     }
                 }
+
+                // The share sits beside the bar rather than inside it: a fill that
+                // is 4% of the width has nowhere to put a label, and a number that
+                // jumps in and out of its bar as the data changes is worse than one
+                // that stays put.
+                row.share?.let { share ->
+                    Text(
+                        text = formatShare(share),
+                        style = typography.labelSmall,
+                        color = colors.graphite,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 2.dp)
+                    )
+                }
+                }
             }
         }
+    }
+}
+
+/** "56.8%" for anything meaningful, "<0.1%" rather than a misleading "0.0%". */
+private fun formatShare(share: Float): String {
+    val percent = share * 100
+    return when {
+        percent >= 10f -> "${percent.toInt()}%"
+        percent >= 0.1f -> String.format(java.util.Locale.ROOT, "%.1f%%", percent)
+        percent > 0f -> "<0.1%"
+        else -> "0%"
     }
 }
 

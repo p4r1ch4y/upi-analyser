@@ -51,7 +51,9 @@ object CsvStatementParser {
 
         for ((index, line) in nonEmpty.drop(1)) {
             val cells = splitCsvLine(line)
-            val txn = runCatching { columns.toRawTxn(cells, defaultCurrency, observedAt, zone) }.getOrNull()
+            val txn = runCatching {
+                columns.toRawTxn(cells, defaultCurrency, observedAt, zone)?.copy(sourceBody = line)
+            }.getOrNull()
             if (txn != null) transactions += txn else skipped += index + 1
         }
 

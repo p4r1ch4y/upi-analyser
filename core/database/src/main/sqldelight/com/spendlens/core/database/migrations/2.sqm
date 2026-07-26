@@ -1,0 +1,16 @@
+-- v2 -> v3: keep the message each transaction was read out of.
+--
+-- Additive. Rows captured before this shipped simply have no source message, and
+-- the detail sheet says so rather than pretending one was lost.
+
+CREATE TABLE source_messages (
+    id TEXT PRIMARY KEY NOT NULL,
+    txn_id TEXT NOT NULL REFERENCES transactions(id),
+    source TEXT NOT NULL,
+    origin TEXT,
+    body TEXT NOT NULL,
+    received_at INTEGER NOT NULL,
+    template_id TEXT
+);
+
+CREATE INDEX idx_source_messages_txn ON source_messages(txn_id);

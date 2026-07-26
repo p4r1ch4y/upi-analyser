@@ -47,10 +47,12 @@ import com.spendlens.SpendLensApp
 import com.spendlens.core.model.Split
 import com.spendlens.service.TransactionCaptureService
 import com.spendlens.service.UpiNotificationListener
+import com.spendlens.ui.dashboard.DashboardActions
 import com.spendlens.ui.dashboard.DashboardScreen
 import com.spendlens.ui.dashboard.DashboardViewModel
 import com.spendlens.ui.entry.AddTransactionSheet
 import com.spendlens.ui.entry.ImportSheet
+import com.spendlens.ui.entry.SourceRecord
 import com.spendlens.ui.entry.SplitSheet
 import com.spendlens.ui.entry.TagSheet
 import com.spendlens.ui.entry.TransactionDetail
@@ -110,6 +112,7 @@ class MainActivity : ComponentActivity() {
                 var showTagSheet by remember { mutableStateOf(false) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
+                var openSources by remember { mutableStateOf<List<SourceRecord>>(emptyList()) }
                 var splitTarget by remember { mutableStateOf<String?>(null) }
 
                 LaunchedEffect(Unit) {
@@ -126,6 +129,7 @@ class MainActivity : ComponentActivity() {
                 // Reload the open sheet's split whenever the ledger changes under it.
                 LaunchedEffect(openTxnId, state.days) {
                     openSplit = openTxnId?.let { viewModel.splitDetail(it) }
+                    openSources = openTxnId?.let { viewModel.sourcesFor(it) }.orEmpty()
                 }
 
                 Scaffold(
@@ -169,7 +173,12 @@ class MainActivity : ComponentActivity() {
 
                         Tab.DASHBOARD -> DashboardScreen(
                             state = dashboard,
-                            onRangeChange = dashboardViewModel::setRange,
+                            actions = DashboardActions(
+                                onRange = dashboardViewModel::setRange,
+                                onDirection = dashboardViewModel::setDirection,
+                                onGroupBy = dashboardViewModel::setGroupBy,
+                                onSortBy = dashboardViewModel::setSortBy
+                            ),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(bottom = padding.calculateBottomPadding())
@@ -190,10 +199,11 @@ class MainActivity : ComponentActivity() {
                                 amountMinor = txn.amountMinor,
                                 isCredit = txn.isCredit,
                                 split = openSplit,
-                                tags = txn.tags
+                                tags = txn.tags,
+                                sources = openSources
                             ),
                             allTags = state.allTags,
-                            onDismiss = { openTxnId = null; openSplit = null },
+                            onDismiss = { openTxnId = null; openSplit = null; openSources = emptyList() },
                             onSplit = { splitTarget = id; showSplitSheet = true },
                             onRemoveSplit = {
                                 viewModel.removeSplit(id)

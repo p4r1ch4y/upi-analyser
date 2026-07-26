@@ -20,22 +20,68 @@ import java.time.ZoneId
 enum class DashboardRange(val days: Long) {
     WEEK(7),
     MONTH(30),
-    QUARTER(90)
+    QUARTER(90),
+    YEAR(365)
 }
+
+/** Money out, or money in. The whole report flips. */
+enum class SpendDirection { EXPENSE, INCOME }
+
+/**
+ * What the report groups by.
+ *
+ * This is the equivalent of "by category" in a conventional tracker. SpendLens
+ * has no category model: a merchant name resolved from the payment itself is more
+ * specific and needs no upkeep, and a tag is a category the user actually chose.
+ */
+enum class GroupBy { MERCHANT, TAG, CHANNEL }
+
+enum class SortBy { AMOUNT, COUNT, NAME }
 
 data class DashboardUiState(
     val range: DashboardRange = DashboardRange.MONTH,
+    val direction: SpendDirection = SpendDirection.EXPENSE,
+    val groupBy: GroupBy = GroupBy.MERCHANT,
+    val sortBy: SortBy = SortBy.AMOUNT,
     val loading: Boolean = true,
     val buckets: List<DayBucket> = emptyList(),
-    val byMerchant: List<SpendSlice> = emptyList(),
-    val byTag: List<SpendSlice> = emptyList(),
-    val byChannel: List<SpendSlice> = emptyList(),
-    val paymentCount: Int = 0
+    val slices: List<SpendSlice> = emptyList(),
+    val paymentCount: Int = 0,
+    val creditCount: Int = 0,
+    val hasTags: Boolean = false
 ) {
     val totalSpentMinor: Long get() = SpendSeries.totalSpentMinor(buckets)
+    val totalReceivedMinor: Long get() = buckets.sumOf { it.receivedMinor }
+    val netMinor: Long get() = SpendSeries.netMinor(buckets)
     val dailyAverageMinor: Long get() = SpendSeries.dailyAverageMinor(buckets)
     val busiestDay: DayBucket? get() = SpendSeries.busiestDay(buckets)
-    val isEmpty: Boolean get() = paymentCount == 0
+
+    /** The figure the report is currently about. */
+    val headlineMinor: Long
+        get() = if (direction == SpendDirection.EXPENSE) totalSpentMinor else totalReceivedMinor
+
+    val headlineCount: Int
+        get() = if (direction == SpendDirection.EXPENSE) paymentCount else creditCount
+
+    val isEmpty: Boolean get() = paymentCount == 0 && creditCount == 0
+
+    /** Slices ordered by the current sort, each carrying its share of the total. */
+    val sortedSlices: List<SpendSlice>
+        get() = when (sortBy) {
+            SortBy.AMOUNT -> slices.sortedByDescending { it.amountMinor }
+            SortBy.COUNT -> slices.sortedByDescending { it.count }
+            SortBy.NAME -> slices.sortedBy { it.label.lowercase() }
+        }
+
+    /**
+     * Share of the group total, not of everything spent. Grouping by tag only
+     * covers payments that carry a tag, so dividing by the overall total would
+     * make every bar look small for a reason the reader cannot see.
+     */
+    fun shareOf(slice: SpendSlice): Float {
+        val total = slices.sumOf { it.amountMinor }
+        return if (total <= 0L) 0f else (slice.amountMinor.toDouble() / total).toFloat()
+    }
 }
 
 /**
@@ -54,41 +100,71 @@ class DashboardViewModel(
     private val _state = MutableStateFlow(DashboardUiState())
     val state: StateFlow<DashboardUiState> = _state.asStateFlow()
 
-    private val range = MutableStateFlow(DashboardRange.MONTH)
+    private data class Query(
+        val range: DashboardRange = DashboardRange.MONTH,
+        val direction: SpendDirection = SpendDirection.EXPENSE,
+        val groupBy: GroupBy = GroupBy.MERCHANT,
+        val sortBy: SortBy = SortBy.AMOUNT
+    )
+
+    private val query = MutableStateFlow(Query())
 
     init {
         viewModelScope.launch {
-            range.collectLatest { selected -> load(selected) }
+            // collectLatest so rapid filter taps cancel the in-flight read rather
+            // than racing each other onto the screen.
+            query.collectLatest { load(it) }
         }
     }
 
-    fun setRange(value: DashboardRange) {
-        range.value = value
+    fun setRange(value: DashboardRange) { query.value = query.value.copy(range = value) }
+    fun setDirection(value: SpendDirection) { query.value = query.value.copy(direction = value) }
+    fun setGroupBy(value: GroupBy) { query.value = query.value.copy(groupBy = value) }
+
+    /** Sorting is a pure reshuffle of what is already loaded, so it never re-queries. */
+    fun setSortBy(value: SortBy) {
+        query.value = query.value.copy(sortBy = value)
+        _state.value = _state.value.copy(sortBy = value)
     }
 
     /** Recomputes after a split or tag changes what the numbers mean. */
     fun refresh() {
-        viewModelScope.launch { load(range.value) }
+        viewModelScope.launch { load(query.value) }
     }
 
-    private suspend fun load(selected: DashboardRange) {
-        _state.value = _state.value.copy(range = selected, loading = true)
+    private suspend fun load(q: Query) {
+        _state.value = _state.value.copy(
+            range = q.range, direction = q.direction, groupBy = q.groupBy, sortBy = q.sortBy,
+            loading = true
+        )
 
         val end = today()
-        val start = end.minusDays(selected.days - 1)
+        val start = end.minusDays(q.range.days - 1)
         val since = start.atStartOfDay(zone).toInstant().toEpochMilli()
         val until = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
 
         val events = annotations.spendPoints(since, until)
+        val dir = if (q.direction == SpendDirection.EXPENSE) "DEBIT" else "CREDIT"
+
+        val slices = when (q.groupBy) {
+            GroupBy.MERCHANT -> annotations.spendByMerchant(since, until, dir)
+            GroupBy.TAG -> annotations.spendByTag(since, until, dir)
+            GroupBy.CHANNEL -> annotations.spendByChannel(since, until, dir)
+        }
 
         _state.value = DashboardUiState(
-            range = selected,
+            range = q.range,
+            direction = q.direction,
+            groupBy = q.groupBy,
+            sortBy = q.sortBy,
             loading = false,
             buckets = SpendSeries.byDay(events, from = start, to = end, zone = zone),
-            byMerchant = annotations.spendByMerchant(since, until),
-            byTag = annotations.spendByTag(since, until),
-            byChannel = annotations.spendByChannel(since, until),
-            paymentCount = events.count { !it.isCredit }
+            slices = slices,
+            paymentCount = events.count { !it.isCredit },
+            creditCount = events.count { it.isCredit },
+            // Grouping by tag is only offered once something is tagged; an empty
+            // report would otherwise look like a bug.
+            hasTags = annotations.spendByTag(since, until, dir).isNotEmpty()
         )
     }
 

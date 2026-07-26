@@ -18,7 +18,18 @@ data class RawTxn(
     val channel: Channel?,
     val instrument: Instrument?,
     val templateId: String?,         // Which parser rule matched
-    val bodyHash: String             // Truncated SHA-256 for dedupe
+    val bodyHash: String,            // Truncated SHA-256 for dedupe
+    /**
+     * The message this was read out of, kept verbatim.
+     *
+     * Stored so the user can answer "why is this row here, and is it right?"
+     * without taking the parser's word for it. A tracker that shows a number it
+     * cannot justify is asking to be trusted; one that can show the sentence it
+     * came from can be checked.
+     */
+    val sourceBody: String? = null,
+    /** Package name for a notification, sender ID for an SMS, file name for CSV. */
+    val sourceOrigin: String? = null
 ) {
     /** Truncated hash for display */
     fun shortHash(): String = bodyHash.take(12)

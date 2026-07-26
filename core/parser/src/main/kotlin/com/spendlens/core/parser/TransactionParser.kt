@@ -141,7 +141,12 @@ data class TransactionTemplate(
             channel = if (channel == Channel.UNKNOWN) detectChannel(text) else channel,
             instrument = null,  // TODO: Extract from message
             templateId = id,
-            bodyHash = dedupeHash(text, input.timestamp)
+            bodyHash = dedupeHash(text, input.timestamp),
+            // The body alone, not the title-prefixed text the patterns run
+            // against - this is shown to the user, so it should read exactly as
+            // it did in their notification shade or inbox.
+            sourceBody = input.body,
+            sourceOrigin = input.packageName ?: input.sender
         )
     }
 

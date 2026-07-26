@@ -229,19 +229,22 @@ class SplitAndTagRepository(
 
     // -------------------------------------------------------------- analytics
 
-    suspend fun spendByMerchant(since: Long, until: Long, limit: Int = 8): List<SpendSlice> =
-        withContext(io) {
-            queries.selectSpendByMerchant(since, until, limit.toLong()).executeAsList().map { it.toSlice() }
-        }
-
-    suspend fun spendByChannel(since: Long, until: Long): List<SpendSlice> = withContext(io) {
-        queries.selectSpendByChannel(since, until).executeAsList().map { it.toSlice() }
+    suspend fun spendByMerchant(
+        since: Long, until: Long, direction: String = "DEBIT", limit: Int = 40
+    ): List<SpendSlice> = withContext(io) {
+        queries.selectSpendByMerchant(since, until, direction, limit.toLong()).executeAsList().map { it.toSlice() }
     }
 
-    suspend fun spendByTag(since: Long, until: Long, limit: Int = 8): List<SpendSlice> =
+    suspend fun spendByChannel(since: Long, until: Long, direction: String = "DEBIT"): List<SpendSlice> =
         withContext(io) {
-            queries.selectSpendByTag(since, until, limit.toLong()).executeAsList().map { it.toSlice() }
+            queries.selectSpendByChannel(since, until, direction).executeAsList().map { it.toSlice() }
         }
+
+    suspend fun spendByTag(
+        since: Long, until: Long, direction: String = "DEBIT", limit: Int = 40
+    ): List<SpendSlice> = withContext(io) {
+        queries.selectSpendByTag(since, until, direction, limit.toLong()).executeAsList().map { it.toSlice() }
+    }
 
     suspend fun spendPoints(since: Long, until: Long): List<SpendEvent> = withContext(io) {
         queries.selectSpendPointsSince(since, until).executeAsList().map { it.toPoint() }

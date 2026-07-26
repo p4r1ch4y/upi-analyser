@@ -123,9 +123,32 @@
     <string name="dash_payments">Payments</string>
     <string name="dash_by_day">Spending by day</string>
     <string name="dash_top_merchants">Where it went</string>
-    <string name="dash_by_tag">By tag</string>
-    <string name="dash_by_channel">How you paid</string>
+    <string name="dash_expense">Expense</string>
+    <string name="dash_income">Income</string>
+    <string name="dash_range_year">1 year</string>
+    <string name="dash_spent_over">%1$d payments over %2$d days</string>
+    <string name="dash_received_over">%1$d credits over %2$d days</string>
+    <string name="dash_breakdown">Breakdown</string>
+    <string name="dash_sort_by">Sort</string>
+    <string name="sort_amount">Amount</string>
+    <string name="sort_count">Count</string>
+    <string name="sort_name">Name</string>
+    <string name="group_merchant">Merchant</string>
+    <string name="group_tag">Tag</string>
+    <string name="group_channel">Payment type</string>
+    <string name="dash_net_out">Net out</string>
+    <string name="dash_net_in">Net in</string>
+    <string name="dash_nothing_grouped">Nothing to group here — tag some payments first.</string>
     <string name="dash_owed">Owed to you</string>
     <string name="dash_nothing">Nothing here yet for this range.</string>
     <string name="dash_share_note">Split payments count only your share.</string>
+
+    <!-- Source message -->
+    <string name="source">Source</string>
+    <string name="source_none">Captured before SpendLens began keeping source messages.</string>
+    <string name="source_notification">Notification</string>
+    <string name="source_sms">SMS</string>
+    <string name="source_statement">Statement</string>
+    <string name="source_manual">Typed in by you</string>
+    <string name="source_matched_by">Matched by %1$s</string>
 </resources>
