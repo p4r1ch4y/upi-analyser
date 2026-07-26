@@ -1,0 +1,34 @@
+-- v1 -> v2: tags, trips and per-person split shares.
+--
+-- Additive only. The alpha shipped with `splits` but no way to say who owed what,
+-- and no tags at all, so there is nothing to backfill or rewrite.
+
+CREATE TABLE tags (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'PLAIN',
+    starts_at INTEGER,
+    ends_at INTEGER,
+    created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_tags_name ON tags(name);
+
+CREATE TABLE transaction_tags (
+    txn_id TEXT NOT NULL REFERENCES transactions(id),
+    tag_id TEXT NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (txn_id, tag_id)
+);
+
+CREATE INDEX idx_txn_tags_tag ON transaction_tags(tag_id);
+
+CREATE TABLE split_participants (
+    id TEXT PRIMARY KEY NOT NULL,
+    split_id TEXT NOT NULL REFERENCES splits(id),
+    name TEXT NOT NULL,
+    share_minor INTEGER NOT NULL,
+    is_me INTEGER NOT NULL DEFAULT 0,
+    settled_at INTEGER
+);
+
+CREATE INDEX idx_split_participants ON split_participants(split_id);

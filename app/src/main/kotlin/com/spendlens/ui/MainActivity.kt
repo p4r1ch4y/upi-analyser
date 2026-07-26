@@ -14,9 +14,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,17 +44,30 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.spendlens.R
 import com.spendlens.SpendLensApp
+import com.spendlens.core.model.Split
 import com.spendlens.service.TransactionCaptureService
 import com.spendlens.service.UpiNotificationListener
+import com.spendlens.ui.dashboard.DashboardScreen
+import com.spendlens.ui.dashboard.DashboardViewModel
 import com.spendlens.ui.entry.AddTransactionSheet
 import com.spendlens.ui.entry.ImportSheet
+import com.spendlens.ui.entry.SplitSheet
+import com.spendlens.ui.entry.TagSheet
+import com.spendlens.ui.entry.TransactionDetail
+import com.spendlens.ui.entry.TransactionDetailSheet
 import com.spendlens.ui.theme.SpendLensTheme
 import com.spendlens.ui.theme.SpendTheme
+
+private enum class Tab { STREAM, DASHBOARD }
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: DayStreamViewModel by viewModels {
         DayStreamViewModel.factory(SpendLensApp.graphOf(this))
+    }
+
+    private val dashboardViewModel: DashboardViewModel by viewModels {
+        DashboardViewModel.factory(SpendLensApp.graphOf(this))
     }
 
     /**
@@ -61,20 +79,11 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
-    /**
-     * SMS history is only worth asking for in the flavour that declares it. The
-     * result feeds straight back into an import so the user does not have to tap
-     * twice.
-     */
     private val requestSmsPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) viewModel.importSmsHistory()
         }
 
-    /**
-     * Statement import goes through the Storage Access Framework, so the app
-     * needs no storage permission and only ever sees the file the user picked.
-     */
     private val pickStatement =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             uri?.let(viewModel::importCsv)
@@ -90,32 +99,150 @@ class MainActivity : ComponentActivity() {
         setContent {
             SpendLensTheme {
                 val state by viewModel.state.collectAsState()
+                val dashboard by dashboardViewModel.state.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val context = LocalContext.current
 
+                var tab by remember { mutableStateOf(Tab.STREAM) }
                 var showAddSheet by remember { mutableStateOf(false) }
                 var showImportSheet by remember { mutableStateOf(false) }
+                var showSplitSheet by remember { mutableStateOf(false) }
+                var showTagSheet by remember { mutableStateOf(false) }
+                var openTxnId by remember { mutableStateOf<String?>(null) }
+                var openSplit by remember { mutableStateOf<Split?>(null) }
+                var splitTarget by remember { mutableStateOf<String?>(null) }
 
                 LaunchedEffect(Unit) {
                     viewModel.events.collect { event ->
+                        // Splits and tags change what every total means, so the
+                        // dashboard is stale the moment one is applied.
+                        if (event is DayStreamEvent.SplitApplied || event is DayStreamEvent.Tagged) {
+                            dashboardViewModel.refresh()
+                        }
                         snackbarHostState.showSnackbar(context.describe(event))
                     }
                 }
 
+                // Reload the open sheet's split whenever the ledger changes under it.
+                LaunchedEffect(openTxnId, state.days) {
+                    openSplit = openTxnId?.let { viewModel.splitDetail(it) }
+                }
+
                 Scaffold(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
-                    containerColor = SpendTheme.colors.paper
+                    containerColor = SpendTheme.colors.paper,
+                    bottomBar = {
+                        Column {
+                            if (state.selecting) {
+                                SelectionBar(
+                                    count = state.selected.size,
+                                    totalMinor = state.selectedTotalMinor,
+                                    onSplit = { showSplitSheet = true },
+                                    onTag = { showTagSheet = true },
+                                    onClear = viewModel::clearSelection
+                                )
+                            } else {
+                                TabBar(current = tab, onSelect = { tab = it })
+                            }
+                        }
+                    }
                 ) { padding ->
-                    DayStreamScreen(
-                        state = state,
-                        onNameMerchant = { /* naming sheet arrives with the edit flow */ },
-                        onAdd = { showAddSheet = true },
-                        onImport = { showImportSheet = true },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = padding.calculateBottomPadding()),
-                        header = if (listenerEnabled) null else {
-                            { ConnectPrompt(onClick = ::openListenerSettings) }
+                    when (tab) {
+                        Tab.STREAM -> DayStreamScreen(
+                            state = state,
+                            actions = DayStreamActions(
+                                onNameMerchant = { /* naming sheet arrives with the edit flow */ },
+                                onOpenTransaction = { openTxnId = it },
+                                onToggleSelect = viewModel::toggleSelection,
+                                onToggleDaySelect = viewModel::toggleDaySelection,
+                                onToggleDayExpanded = viewModel::toggleDay,
+                                onAdd = { showAddSheet = true },
+                                onImport = { showImportSheet = true }
+                            ),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = padding.calculateBottomPadding()),
+                            header = if (listenerEnabled) null else {
+                                { ConnectPrompt(onClick = ::openListenerSettings) }
+                            }
+                        )
+
+                        Tab.DASHBOARD -> DashboardScreen(
+                            state = dashboard,
+                            onRangeChange = dashboardViewModel::setRange,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = padding.calculateBottomPadding())
+                        )
+                    }
+                }
+
+                // ------------------------------------------------------- sheets
+
+                openTxnId?.let { id ->
+                    state.transaction(id)?.let { txn ->
+                        TransactionDetailSheet(
+                            detail = TransactionDetail(
+                                id = txn.id,
+                                occurredAt = txn.occurredAt,
+                                displayName = txn.displayName,
+                                counterpartyVpa = txn.counterpartyVpa,
+                                amountMinor = txn.amountMinor,
+                                isCredit = txn.isCredit,
+                                split = openSplit,
+                                tags = txn.tags
+                            ),
+                            allTags = state.allTags,
+                            onDismiss = { openTxnId = null; openSplit = null },
+                            onSplit = { splitTarget = id; showSplitSheet = true },
+                            onRemoveSplit = {
+                                viewModel.removeSplit(id)
+                                openSplit = null
+                                dashboardViewModel.refresh()
+                            },
+                            onToggleSettled = { index, settled ->
+                                viewModel.setSettled(id, index, settled)
+                            },
+                            onAddTag = { name ->
+                                viewModel.tagOne(id, name)
+                                dashboardViewModel.refresh()
+                            },
+                            onRemoveTag = { tagId ->
+                                viewModel.untag(id, tagId)
+                                dashboardViewModel.refresh()
+                            },
+                            onDelete = {
+                                viewModel.delete(id)
+                                openTxnId = null
+                            }
+                        )
+                    }
+                }
+
+                if (showSplitSheet) {
+                    val single = splitTarget?.let { state.transaction(it) }
+                    SplitSheet(
+                        paymentCount = if (single != null) 1 else state.selected.size,
+                        totalMinor = single?.amountMinor ?: state.selectedTotalMinor,
+                        onDismiss = { showSplitSheet = false; splitTarget = null },
+                        onConfirm = { names ->
+                            if (single != null) viewModel.splitOne(single.id, names)
+                            else viewModel.splitSelected(names.size, names)
+                            showSplitSheet = false
+                            splitTarget = null
+                            dashboardViewModel.refresh()
+                        }
+                    )
+                }
+
+                if (showTagSheet) {
+                    TagSheet(
+                        paymentCount = state.selected.size,
+                        existing = state.allTags,
+                        onDismiss = { showTagSheet = false },
+                        onConfirm = { name, isTrip ->
+                            viewModel.tagSelected(name, isTrip)
+                            showTagSheet = false
                         }
                     )
                 }
@@ -126,6 +253,7 @@ class MainActivity : ComponentActivity() {
                         onSubmit = { entry ->
                             viewModel.addManual(entry)
                             showAddSheet = false
+                            dashboardViewModel.refresh()
                         }
                     )
                 }
@@ -203,6 +331,40 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+private fun TabBar(current: Tab, onSelect: (Tab) -> Unit) {
+    val colors = SpendTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.paper)
+            .navigationBarsPadding()
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        TabPill(stringResource(R.string.tab_stream), current == Tab.STREAM) { onSelect(Tab.STREAM) }
+        TabPill(stringResource(R.string.tab_dashboard), current == Tab.DASHBOARD) { onSelect(Tab.DASHBOARD) }
+    }
+}
+
+@Composable
+private fun TabPill(text: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = SpendTheme.colors
+    Box(
+        modifier = Modifier
+            .background(if (selected) colors.ink else colors.paperSunk, RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selected) colors.paper else colors.ink
+        )
+    }
+}
+
 /** Renders a one-shot event into user-facing text. */
 private fun android.content.Context.describe(event: DayStreamEvent): String = when (event) {
     is DayStreamEvent.Imported -> {
@@ -216,6 +378,8 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.TransactionAdded -> getString(R.string.add_result)
     DayStreamEvent.ListenerNotConnected -> getString(R.string.import_listener_not_connected)
     DayStreamEvent.SmsUnavailable -> getString(R.string.import_sms_unavailable)
+    is DayStreamEvent.SplitApplied -> getString(R.string.split_applied, event.count)
+    is DayStreamEvent.Tagged -> getString(R.string.tagged_result, event.count, event.tagName)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

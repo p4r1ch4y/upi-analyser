@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      "1 taps · 1 merchants" appeared on every collapsed day. Android picks the
+      form from the count, so the grammar stays right in every locale rather than
+      being hand-glued from two format strings.
+    -->
+    <plurals name="tap_count">
+        <item quantity="one">%d tap</item>
+        <item quantity="other">%d taps</item>
+    </plurals>
+    <plurals name="merchant_count">
+        <item quantity="one">%d merchant</item>
+        <item quantity="other">%d merchants</item>
+    </plurals>
+</resources>

@@ -134,7 +134,11 @@ data class TransactionTemplate(
             // across the whole message rather than pinned into every template.
             rrn = match.groupOrNull("rrn") ?: findReference(text),
             accountTail = (match.groupOrNull("accountTail") ?: findAccountTail(text))?.takeLast(4),
-            channel = channel,
+            // A template declares the channel it is sure of; where it is not sure,
+            // the message usually says. Most bank SMS shapes are rail-agnostic
+            // ("Rs.X debited from a/c ..."), and leaving them all UNKNOWN made
+            // "how you paid" a single meaningless bar.
+            channel = if (channel == Channel.UNKNOWN) detectChannel(text) else channel,
             instrument = null,  // TODO: Extract from message
             templateId = id,
             bodyHash = dedupeHash(text, input.timestamp)
@@ -180,6 +184,17 @@ data class TransactionTemplate(
 
         fun findReference(text: String): String? =
             REFERENCE_SCANS.firstNotNullOfOrNull { it.find(text)?.groupValues?.getOrNull(1) }
+
+        /** Reads the rail off the message when the template could not name it. */
+        fun detectChannel(text: String): Channel = when {
+            Regex("""\bATM\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.ATM
+            Regex("""\bUPI\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.UPI
+            Regex("""\bIMPS\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.IMPS
+            Regex("""\bNEFT\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.NEFT
+            Regex("""\bRTGS\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.RTGS
+            Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> Channel.CARD
+            else -> Channel.UNKNOWN
+        }
 
         /**
          * Reading a named group that the pattern does not declare throws, so every

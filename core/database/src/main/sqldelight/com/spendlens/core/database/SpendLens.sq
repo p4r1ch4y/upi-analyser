@@ -88,6 +88,47 @@ CREATE TABLE splits (
     settled_minor INTEGER NOT NULL DEFAULT 0
 );
 
+-- A label the user puts on a payment.
+--
+-- A TRIP owns a date range, which is what lets the home screen show "Goa trip,
+-- day 3 of 5" and lets a whole stretch of days be claimed at once. A PLAIN tag is
+-- just a label. One table, because a trip is a tag that happens to know its dates
+-- - splitting them apart would duplicate every join for no gain.
+CREATE TABLE tags (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'PLAIN',   -- PLAIN, TRIP
+    starts_at INTEGER,                    -- TRIP only
+    ends_at INTEGER,                      -- TRIP only
+    created_at INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX idx_tags_name ON tags(name);
+
+CREATE TABLE transaction_tags (
+    txn_id TEXT NOT NULL REFERENCES transactions(id),
+    tag_id TEXT NOT NULL REFERENCES tags(id),
+    PRIMARY KEY (txn_id, tag_id)
+);
+
+CREATE INDEX idx_txn_tags_tag ON transaction_tags(tag_id);
+
+-- Who owes what on a split payment.
+--
+-- Shares are stored per person rather than derived from a "split N ways" count,
+-- because they stop being even the moment someone settles up or the user edits
+-- one. settled_at is null until they actually pay you back.
+CREATE TABLE split_participants (
+    id TEXT PRIMARY KEY NOT NULL,
+    split_id TEXT NOT NULL REFERENCES splits(id),
+    name TEXT NOT NULL,
+    share_minor INTEGER NOT NULL,
+    is_me INTEGER NOT NULL DEFAULT 0,
+    settled_at INTEGER
+);
+
+CREATE INDEX idx_split_participants ON split_participants(split_id);
+
 CREATE TABLE seen_hashes (
     body_hash TEXT PRIMARY KEY NOT NULL,
     seen_at INTEGER NOT NULL
@@ -247,4 +288,174 @@ WHERE occurred_at >= :dayStart
   AND occurred_at < :dayEnd
   AND direction = 'DEBIT'
   AND (flags & 8) = 0
+  AND deleted_at IS NULL;
+
+
+-- Splits ---------------------------------------------------------------------
+
+selectSplitForTxn:
+SELECT * FROM splits WHERE txn_id = :txnId LIMIT 1;
+
+selectSplitParticipants:
+SELECT * FROM split_participants WHERE split_id = :splitId ORDER BY is_me DESC, rowid;
+
+-- Every split in a window, for the day stream and the dashboard. Joined to the
+-- transaction so one query answers "what did I actually pay, and what was mine".
+selectSplitsSince:
+SELECT s.*, t.occurred_at
+FROM splits s
+JOIN transactions t ON t.id = s.txn_id
+WHERE t.occurred_at >= :since AND t.deleted_at IS NULL;
+
+insertSplit:
+INSERT OR REPLACE INTO splits (id, txn_id, total_minor, my_share_minor, settled_minor)
+VALUES (?, ?, ?, ?, ?);
+
+insertSplitParticipant:
+INSERT INTO split_participants (id, split_id, name, share_minor, is_me, settled_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteSplitParticipants:
+DELETE FROM split_participants WHERE split_id = :splitId;
+
+deleteSplit:
+DELETE FROM splits WHERE txn_id = :txnId;
+
+setParticipantSettled:
+UPDATE split_participants SET settled_at = :settledAt WHERE id = :id;
+
+updateSplitSettled:
+UPDATE splits SET settled_minor = :settledMinor WHERE id = :id;
+
+-- Tags -----------------------------------------------------------------------
+
+selectAllTags:
+SELECT * FROM tags ORDER BY kind DESC, name;
+
+selectTagsForTxn:
+SELECT tg.* FROM tags tg
+JOIN transaction_tags tt ON tt.tag_id = tg.id
+WHERE tt.txn_id = :txnId
+ORDER BY tg.kind DESC, tg.name;
+
+-- Every (transaction, tag) pair in a window, so the stream can label rows without
+-- one query per row.
+selectTagLinksSince:
+SELECT tt.txn_id, tg.id, tg.name, tg.kind
+FROM transaction_tags tt
+JOIN tags tg ON tg.id = tt.tag_id
+JOIN transactions t ON t.id = tt.txn_id
+WHERE t.occurred_at >= :since AND t.deleted_at IS NULL;
+
+-- The trip covering an instant, if any. Used for the home screen banner.
+selectTripAt:
+SELECT * FROM tags
+WHERE kind = 'TRIP' AND starts_at <= :at AND ends_at >= :at
+ORDER BY starts_at DESC
+LIMIT 1;
+
+insertTag:
+INSERT OR IGNORE INTO tags (id, name, kind, starts_at, ends_at, created_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectTagByName:
+SELECT * FROM tags WHERE name = :name LIMIT 1;
+
+tagTransaction:
+INSERT OR IGNORE INTO transaction_tags (txn_id, tag_id) VALUES (?, ?);
+
+untagTransaction:
+DELETE FROM transaction_tags WHERE txn_id = :txnId AND tag_id = :tagId;
+
+deleteTag:
+DELETE FROM tags WHERE id = :id;
+
+deleteTagLinks:
+DELETE FROM transaction_tags WHERE tag_id = :tagId;
+
+-- Analytics ------------------------------------------------------------------
+
+-- Spend by counterparty over a window. `effective_minor` is the user's own cost:
+-- their share when a payment was split, the full amount otherwise. Reporting the
+-- gross would tell someone who fronted a group dinner that they spent ₹8,000 on
+-- food, which is both wrong and the reason they stop trusting the number.
+selectSpendByMerchant:
+SELECT t.display_name AS label,
+       SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+GROUP BY t.display_name
+ORDER BY effective_minor DESC
+LIMIT :limit;
+
+selectSpendByChannel:
+SELECT coalesce(t.channel, 'UNKNOWN') AS label,
+       SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+GROUP BY label
+ORDER BY effective_minor DESC;
+
+selectSpendByTag:
+SELECT tg.name AS label,
+       SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+JOIN transaction_tags tt ON tt.txn_id = t.id
+JOIN tags tg ON tg.id = tt.tag_id
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+GROUP BY tg.name
+ORDER BY effective_minor DESC
+LIMIT :limit;
+
+-- One row per transaction, already reduced to what the user actually spent.
+-- Bucketing into days happens in Kotlin, where the time zone is known; SQLite
+-- would have to be told the offset and would get it wrong across a DST change.
+selectSpendPointsSince:
+SELECT t.occurred_at,
+       t.direction,
+       coalesce(s.my_share_minor, t.amount_minor) AS effective_minor
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.deleted_at IS NULL
+ORDER BY t.occurred_at;
+
+-- One-off label repair -------------------------------------------------------
+--
+-- An earlier build's resolution ladder fell back to the literal string
+-- "Manual entry" for any payment whose counterparty it could not recover, which
+-- labelled hundreds of imported bank messages as something the user had typed in
+-- by hand. Source mask 8 is MANUAL, so these are precisely the rows that were
+-- never manual.
+
+repairFalseManualLabels:
+UPDATE transactions
+SET display_name = coalesce(counterparty_name_raw, 'Bank message'),
+    updated_at = :now
+WHERE display_name = 'Manual entry'
+  AND (source_mask & 8) = 0
+  AND deleted_at IS NULL;
+
+-- The same ladder ignored counterparty names captured from SMS and fell through
+-- to the VPA, rendering a Google Play mandate as its 32-character hash. Where a
+-- real name was captured and something worse was stored, prefer the name.
+repairIgnoredCapturedNames:
+UPDATE transactions
+SET display_name = counterparty_name_raw,
+    resolution_rung = 2,
+    updated_at = :now
+WHERE counterparty_name_raw IS NOT NULL
+  AND counterparty_name_raw != display_name
+  AND counterparty_name_raw NOT LIKE '%@%'
+  AND resolution_rung >= 3
+  AND (source_mask & 2) != 0
   AND deleted_at IS NULL;

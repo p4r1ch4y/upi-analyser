@@ -1,7 +1,8 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 79 unit tests pass, lint is clean, and the app
-captures, stores and displays real payments end to end.
+Alpha. Both flavours build, all 102 unit tests pass, lint is clean, and the app
+captures, stores and displays real payments end to end — verified on a physical
+device, not just in the test suite.
 
 The SMS parser is measured against a 4,103-message backup from a real handset:
 **603 of 652 candidate messages captured (92%)**, with zero closing balances
@@ -67,10 +68,28 @@ nudge**.
 
 ### UI
 
-Day stream (time-ordered, not a dashboard), tap bar with square-root scaling,
-receipt-grammar rows with dotted leaders, review chips on low-confidence rows,
-manual-entry sheet, import sheet, live day total in the foreground notification,
-real-time nudge.
+**Stream** — day-ordered, not a dashboard. Tap bar with square-root scaling,
+receipt-grammar rows with dotted leaders, review chips on low-confidence rows.
+Past days collapse to one line and expand in place. Long-pressing a payment
+starts a selection; long-pressing a day header takes the whole day.
+
+**Splits** — split any selection of payments N ways, name the people or don't.
+Each payment is split on its own total, so the arithmetic stays true per row and
+one can be settled without touching the rest. The stream shows *your share*, and
+so does every total in the app; the detail sheet is where "you paid ₹2,400 /
+your share ₹600" lives, along with who has settled and what is still owed.
+
+**Tags and trips** — a trip is a tag that knows its own date range, so the banner
+can say "day 3 of 5" without anyone entering dates. Trips take the accent colour,
+plain tags stay neutral; identity always comes from the label, never the colour.
+
+**Insights** — a headline figure, two stat tiles, spend-by-day columns, and
+ranked bars for merchant, tag and rail. One mark language throughout: magnitude
+is length, colour is emphasis only. No categorical palette, no legends, no pie
+charts. Every bar is direct-labelled.
+
+**Manual entry** — amount, counterparty, direction, payment type, editable date
+and time.
 
 ### Privacy posture
 
@@ -102,6 +121,17 @@ Verifiable on the artifact, not just claimed:
 - A bulk import re-read the user-rule table once per message. Hoisted out of the
   loop; on an encrypted database that was most of the wall-clock cost of importing
   years of history.
+- The resolution ladder only trusted counterparty names captured from
+  *notifications*, so every name bank SMS does give up was thrown away and the
+  VPA used instead — a Google Play mandate rendered as its 32-character hash. It
+  also fell back to the literal string "Manual entry", which labelled several
+  hundred imported bank messages as something the user had typed by hand. Both
+  found by installing the build and reading the dashboard, neither caught by any
+  test. Display names are resolved once and stored, so a one-off idempotent
+  repair fixes rows already in the ledger.
+- Most bank-SMS shapes hard-coded `Channel.UNKNOWN`, which made "how you paid" a
+  single meaningless bar. The rail is now read off the message when the template
+  cannot name it.
 - `strings.xml` closed with `</string>`; `ic_notification.xml` had a `<resources>`
   root and no closing tag; launcher icons did not exist; the theme inherited from
   `Theme.Material3.*`, which Compose Material3 does not ship. All four broke the
@@ -122,11 +152,11 @@ Verifiable on the artifact, not just claimed:
 
 - Encrypted backup and restore (Argon2id → XChaCha20-Poly1305 over SAF). The
   format is specified in `ARCHITECTURE_FLOW.md`; none of it is implemented.
-- Splits, budgets, categories. Tables exist; no UI reaches them.
+- Budgets and categories. Tables exist; no UI reaches them.
 - Merchant naming sheet. The review chip is rendered and
   `TransactionRepository.nameMerchant` works and is tested by construction, but
   the chip is not yet wired to a sheet.
 - Editing or deleting a transaction from the UI (`softDelete` exists underneath).
 - PDF and XLS statement import. CSV only.
 - Release signing — release builds still use the debug key.
-- Instrumented tests. All 79 tests are JVM-only.
+- Instrumented tests. All 102 tests are JVM-only.

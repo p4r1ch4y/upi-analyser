@@ -177,6 +177,21 @@ class TransactionRepository(
         queries.softDeleteTransaction(deleted_at = now, updated_at = now, id = id)
     }
 
+    /**
+     * Repairs labels an earlier build's resolution ladder got wrong.
+     *
+     * Fixing the ladder only helps rows ingested after the fix; the display name
+     * is resolved once and stored, so several hundred already-imported bank
+     * messages would have kept reading "Manual entry" forever. Idempotent - once
+     * repaired, the WHERE clauses match nothing.
+     */
+    suspend fun repairLabels(now: Long = System.currentTimeMillis()) = withContext(io) {
+        database.transaction {
+            queries.repairFalseManualLabels(now)
+            queries.repairIgnoredCapturedNames(now)
+        }
+    }
+
     /** Dedupe hashes are only useful for as long as a replay is plausible. */
     suspend fun pruneHashesOlderThan(cutoff: Long) = withContext(io) {
         queries.pruneOldHashes(cutoff)

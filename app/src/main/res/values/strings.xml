@@ -22,10 +22,7 @@
     
     <!-- Home screen -->
     <string name="today">Today</string>
-    <string name="taps_merchants">%1$d taps · %2$d merchants</string>
     <string name="name_this_merchant">Name this merchant</string>
-    <string name="split_n_ways">Split %d ways</string>
-    <string name="paid_amount">₹%s paid</string>
     
     <!-- Actions -->
     <string name="add_manual_transaction">Add transaction</string>
@@ -73,4 +70,62 @@
     <!-- Empty states -->
     <string name="no_transactions_yet">Your first payment will appear here within seconds of you making it.</string>
     <string name="test_transaction">Send yourself ₹1 to test</string>
+
+    <!-- Day expansion -->
+    <string name="day_show">Show</string>
+    <string name="day_hide">Hide</string>
+
+    <!-- Trip -->
+    <string name="trip_day_of">day %1$d of %2$d</string>
+
+    <!-- Selection -->
+    <string name="selection_count">%1$d selected</string>
+    <string name="action_split">Split</string>
+    <string name="action_unsplit">Remove split</string>
+    <string name="action_tag">Tag</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_add_short">Add</string>
+
+    <!-- Split -->
+    <string name="split_title">Split %1$d payments</string>
+    <string name="split_total">Total %1$s</string>
+    <string name="split_ways">How many ways</string>
+    <string name="split_names">Names (optional)</string>
+    <string name="split_names_hint">Comma separated. Leave blank to just split evenly.</string>
+    <string name="split_preview">Split %1$d ways · your share %2$s</string>
+    <string name="split_n_ways">Split %1$d ways</string>
+    <string name="split_paid">Split · %1$s paid</string>
+    <string name="you_paid">You paid</string>
+    <string name="your_share">Your share</string>
+    <string name="owed_to_you">Owed to you</string>
+    <string name="split_applied">Split %1$d payments</string>
+
+    <!-- Tags -->
+    <string name="tags">Tags</string>
+    <string name="add_tag">Add tag</string>
+    <string name="tag_title">Tag %1$d payments</string>
+    <string name="tag_name">Tag name</string>
+    <string name="tag_plain">Tag</string>
+    <string name="tag_trip">Trip</string>
+    <string name="tag_trip_hint">A trip spans the days of the payments you tag, so the home screen can show how far through it you are.</string>
+    <string name="tagged_result">Tagged %1$d payments as %2$s</string>
+
+    <!-- Dashboard -->
+    <string name="tab_stream">Stream</string>
+    <string name="tab_dashboard">Insights</string>
+    <string name="dash_this_month">This month</string>
+    <string name="dash_range_week">7 days</string>
+    <string name="dash_range_month">30 days</string>
+    <string name="dash_range_quarter">90 days</string>
+    <string name="dash_daily_average">Daily average</string>
+    <string name="dash_busiest_day">Biggest day</string>
+    <string name="dash_payments">Payments</string>
+    <string name="dash_by_day">Spending by day</string>
+    <string name="dash_top_merchants">Where it went</string>
+    <string name="dash_by_tag">By tag</string>
+    <string name="dash_by_channel">How you paid</string>
+    <string name="dash_owed">Owed to you</string>
+    <string name="dash_nothing">Nothing here yet for this range.</string>
+    <string name="dash_share_note">Split payments count only your share.</string>
 </resources>

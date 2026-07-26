@@ -48,11 +48,24 @@ class MerchantResolver {
             }
         }
 
-        // Rung 2: Notification display name.
+        // Rung 2: a counterparty name the parser captured.
+        //
+        // Notifications and SMS both reach here, because in both cases the name
+        // came out of a named capture group in a template that was written for
+        // that exact sentence - it is a payee, not a guess. Gating this on
+        // notifications alone threw away every name bank SMS does give up
+        // ("sent via UPI to THE RICH TABLE", "transfer from RAM KUMAR", the
+        // merchant on an autopay mandate) and fell through to the VPA, which
+        // rendered a Google Play mandate as its 32-character hash.
+        //
+        // Statement imports are excluded: a CSV narration is raw bank text
+        // ("UPI-SWIGGY-swiggy@ybl-..."), so it is better to let the VPA rules
+        // have it first and keep the narration as the last resort.
         // A VPA-shaped "name" is not a display name - fall through to rung 3 so
         // the VPA structure rules get a chance at it.
         val rawName = txn.counterpartyNameRaw
-        if (txn.source == Source.NOTIFICATION && !rawName.isNullOrBlank() && !rawName.contains("@")) {
+        val nameIsTrustworthy = txn.source == Source.NOTIFICATION || txn.source == Source.SMS
+        if (nameIsTrustworthy && !rawName.isNullOrBlank() && !rawName.contains("@")) {
             val cleanName = cleanNotificationName(rawName)
             if (cleanName.isNotBlank()) {
                 return Resolution(
@@ -100,10 +113,18 @@ class MerchantResolver {
             }
         }
 
-        // Rung 6: Raw VPA as display name (never "Unknown")
-        val displayName = txn.counterpartyVpa?.let { 
-            Vpa.parse(it)?.displayName() 
-        } ?: txn.counterpartyNameRaw ?: "Manual entry"
+        // Rung 6: last resort. Never "Unknown" - but never a lie either.
+        //
+        // This used to fall back to "Manual entry", which labelled several hundred
+        // imported bank messages as something the user had typed in by hand. When
+        // all that is known is which account the money left, say that; the account
+        // tail is genuine information and is what the user will recognise.
+        val displayName = txn.counterpartyVpa?.let {
+            Vpa.parse(it)?.displayName()
+        }
+            ?: txn.counterpartyNameRaw
+            ?: txn.accountTail?.let { "Bank a/c ••$it" }
+            ?: unlabelledFor(txn.source)
 
         return Resolution(
             displayName = displayName,
@@ -112,6 +133,14 @@ class MerchantResolver {
             rung = 6,
             confidence = 0.3f
         )
+    }
+
+    /** Honest name for a payment whose counterparty nothing could recover. */
+    private fun unlabelledFor(source: Source): String = when (source) {
+        Source.SMS -> "Bank message"
+        Source.NOTIFICATION -> "Payment"
+        Source.STATEMENT -> "Statement entry"
+        Source.MANUAL -> "Manual entry"
     }
 
     private fun resolveFromStructure(vpa: Vpa, pattern: Vpa.VpaPattern): Resolution? {

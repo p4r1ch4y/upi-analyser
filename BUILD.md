@@ -100,7 +100,7 @@ $ANDROID_HOME/build-tools/36.0.0/aapt2 dump badging \
 ./gradlew test
 ```
 
-79 unit tests across `core:model`, `core:parser`, `core:resolution` and
+102 unit tests across `core:model`, `core:parser`, `core:resolution` and
 `core:fusion`. They are plain JVM tests — no emulator, no Robolectric — because
 every parsing and resolution decision lives in Android-free modules.
 

@@ -13,6 +13,7 @@ import com.spendlens.data.CsvStatementImporter
 import com.spendlens.data.DatabasePassphrase
 import com.spendlens.data.Days
 import com.spendlens.data.SmsInboxImporter
+import com.spendlens.data.SplitAndTagRepository
 import com.spendlens.data.TransactionIngestor
 import com.spendlens.data.TransactionRepository
 import com.spendlens.notify.NudgeNotifier
@@ -37,13 +38,17 @@ class SpendLensApp : Application() {
 
         createNotificationChannels()
 
-        // Dedupe hashes only guard against replays; older ones are dead weight.
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            // Dedupe hashes only guard against replays; older ones are dead weight.
             runCatching {
                 graph.repository.pruneHashesOlderThan(
                     System.currentTimeMillis() - HASH_RETENTION_MILLIS
                 )
             }
+            // Display names are resolved once and stored, so a fix to the
+            // resolution ladder does nothing for rows already in the ledger.
+            // Idempotent, so it costs one no-op statement per launch thereafter.
+            runCatching { graph.repository.repairLabels() }
         }
     }
 
@@ -94,6 +99,9 @@ class SpendLensApp : Application() {
         val smsImporter: SmsInboxImporter by lazy { SmsInboxImporter(context, parser) }
 
         val csvImporter: CsvStatementImporter by lazy { CsvStatementImporter(context) }
+
+        /** Splits, tags and the dashboard aggregates. */
+        val annotations: SplitAndTagRepository by lazy { SplitAndTagRepository(database) }
 
         suspend fun todayTotalMinor(): Long {
             val start = Days.startOfToday()
