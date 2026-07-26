@@ -1,0 +1,24 @@
+The typefaces in app/src/main/res/font/ are bundled so the application builds from a
+clean checkout. Both are licensed under the SIL Open Font License, Version 1.1,
+which permits bundling and redistribution.
+
+  bricolage_grotesque_semibold.ttf
+    Bricolage Grotesque — Copyright (c) 2022 The Bricolage Project Authors
+    https://github.com/ateliertriay/bricolage
+    SIL Open Font License 1.1
+
+  ibm_plex_sans_regular.ttf
+  ibm_plex_sans_medium.ttf
+  ibm_plex_sans_semibold.ttf
+    IBM Plex Sans — Copyright (c) 2017 IBM Corp.
+    https://github.com/IBM/plex
+    SIL Open Font License 1.1
+
+Full licence text: https://openfontlicense.org/
+
+This notice lives here rather than beside the fonts because Android's
+resource merger rejects any file in res/font/ that is not a font.
+
+Neither font is modified. They are redistributed unchanged under the terms of
+the OFL, which requires this notice to travel with them and forbids selling the
+fonts on their own.

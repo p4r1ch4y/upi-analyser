@@ -25,7 +25,7 @@ local.properties
 *.swp
 *~
 
-# Signing
+# Signing — the key and its passwords never enter the repository.
 *.jks
 *.keystore
 keystore.properties
@@ -38,10 +38,6 @@ secrets/
 *.db
 *.db-shm
 *.db-wal
-
-# Fonts (download separately)
-app/src/main/res/font/*.ttf
-app/src/main/res/font/*.otf
 
 # Generated
 **/build/

@@ -1,6 +1,31 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+/**
+ * Release signing.
+ *
+ * Read from `keystore.properties`, which is git-ignored and never leaves the
+ * machine that holds the key. When the file is absent the release build is left
+ * *unsigned* rather than falling back to the debug key.
+ *
+ * Falling back mattered: every release APK built here was signed
+ * `CN=Android Debug`, a certificate whose private key ships inside the Android
+ * SDK and is therefore identical on every machine on earth. Play Protect treats
+ * that as an unsigned app by any other name, which is a large part of why
+ * sideloading this triggered a warning.
+ *
+ * F-Droid signs with its own key, so an unsigned release is exactly what its
+ * build server expects.
+ */
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -21,6 +46,22 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystoreProperties.containsKey("storeFile")) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                // v1 is what Play Protect's older heuristics still look at; v2/v3
+                // are what modern Android verifies. Sign with all of them.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -29,7 +70,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug") // FIXME: Add release signing
+            // Null when there is no keystore.properties: unsigned, never debug-signed.
+            signingConfig = signingConfigs.findByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
@@ -90,14 +132,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
     // DataStore (for settings)
-    implementation(libs.androidx.datastore.preferences)
 
     // Testing
     testImplementation(libs.junit)

@@ -1,0 +1,7 @@
+First alpha.
+
+Captures UPI notifications and bank SMS, imports CSV statements, and lets you
+add payments by hand. Split payments between people, tag them, group them into
+trips, and see where the money went by day, merchant, tag and rail.
+
+Everything stays on the device: the app has no INTERNET permission.

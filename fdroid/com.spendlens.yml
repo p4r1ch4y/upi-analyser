@@ -1,0 +1,40 @@
+# F-Droid build metadata for SpendLens.
+#
+# This is the file that goes to fdroiddata as `metadata/com.spendlens.yml` in a
+# merge request. It lives here so it is versioned alongside the code it builds.
+#
+# Before opening the merge request:
+#   fdroid lint com.spendlens
+#   fdroid rewritemeta com.spendlens
+#   fdroid build -v -l com.spendlens
+#
+# Replace the GitLab URLs once the mirror exists — F-Droid wants the canonical
+# source location, and its own infrastructure is GitLab.
+
+Categories:
+  - Money
+License: GPL-3.0-only
+AuthorName: SpendLens
+SourceCode: https://gitlab.com/REPLACE_ME/spendlens
+IssueTracker: https://gitlab.com/REPLACE_ME/spendlens/-/issues
+Changelog: https://gitlab.com/REPLACE_ME/spendlens/-/tags
+
+AutoName: SpendLens
+
+RepoType: git
+Repo: https://gitlab.com/REPLACE_ME/spendlens.git
+
+Builds:
+  - versionName: 0.1.0-alpha
+    versionCode: 1
+    commit: v0.1.0-alpha
+    subdir: app
+    gradle:
+      - standard
+    # The build server has no keystore.properties, so the release build is left
+    # unsigned and F-Droid signs it. Nothing here needs to strip a signing block.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0-alpha
+CurrentVersionCode: 1

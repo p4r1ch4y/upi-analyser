@@ -1,0 +1,1 @@
+Track UPI spending on-device. No internet permission, so nothing can leave

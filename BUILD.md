@@ -146,9 +146,56 @@ this app does. Three things follow:
 
 ## Signing a release
 
-`app/build.gradle.kts` currently signs release builds with the debug key, which
-is marked `FIXME`. Before distributing anything, create a keystore and replace
-that `signingConfig`. Keep the keystore and its passwords out of the repository.
+Release builds read `keystore.properties` from the project root. That file is
+git-ignored; `keystore.properties.example` shows what goes in it and includes the
+`keytool` command to create the key.
+
+**Without it, the release build is unsigned** — not debug-signed. That matters:
+until recently this project fell back to the debug key, whose private half ships
+inside the Android SDK and is therefore identical on every machine on earth. An
+APK signed that way is, for practical purposes, unsigned by anyone in particular.
+
+F-Droid signs with its own key, so an unsigned release is exactly what its build
+server expects. Verify what you produced:
+
+```bash
+$ANDROID_HOME/build-tools/36.0.0/apksigner verify --print-certs \
+  app/build/outputs/apk/standard/release/*.apk
+```
+
+Keep the keystore and its passwords somewhere durable. An app signed with a
+different key than the previous release cannot be installed as an update — only
+as a fresh install, which loses every user's ledger.
+
+## Google Play Protect blocks the install
+
+Expected, and **not** something this app can engineer its way out of.
+
+Play Protect blocks apps that are installed from an *Internet-sideloading source*
+— [Google names web browsers, messaging apps and file
+managers](https://developers.google.com/android/play-protect/warning-dev-guidance)
+— **and** declare any of `RECEIVE_SMS`, `READ_SMS`, `NOTIFICATION_LISTENER` or
+`ACCESSIBILITY`. The message is *"This app can request access to sensitive data.
+This can increase the risk of identity theft or financial fraud."*
+
+Reading payment notifications is the entire mechanism of this app, so
+`NOTIFICATION_LISTENER` is not negotiable and the `standard` flavour trips the
+same rule as `full`. Installing the APK by tapping it in a file manager is
+precisely the named case.
+
+What actually changes the outcome:
+
+- **Install over adb** — `adb install -r app-standard-release.apk`. Not an
+  Internet-sideloading source; no warning.
+- **Install from an app store client** rather than a file manager. Google's list
+  does not mention store clients, but nor does it exempt them, so treat F-Droid
+  as likely-but-unconfirmed rather than a guarantee.
+- **Appeal the classification.** Google runs a Play Protect appeal process for
+  developers whose app is correctly using a permission its policies allow.
+
+What does *not* help: reducing permissions further (there is nothing left to
+drop), or signing properly — worth doing regardless, but this particular block is
+keyed on the permission and the install source, not on the certificate.
 
 ## Troubleshooting
 

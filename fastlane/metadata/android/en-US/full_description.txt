@@ -1,0 +1,39 @@
+SpendLens turns the payment notifications and bank messages already on your
+phone into a record of your spending, laid out as days rather than as a
+dashboard. It reads them where they land and writes what it learns to an
+encrypted database on the device.
+
+It cannot send that anywhere. The app holds no INTERNET permission at all, which
+is checkable on the APK rather than something you have to take on trust:
+
+    aapt2 dump badging SpendLens.apk | grep uses-permission
+
+<b>What it does</b>
+
+* Reads UPI payment notifications from the apps you already use
+* Reads bank SMS, in the "full" build only, including messages already in your
+  inbox — usually months or years of history
+* Imports a CSV statement exported from your bank
+* Lets you type in cash and anything else it cannot see
+* Splits a payment, a day, or a run of days between people, and tracks who has
+  paid you back
+* Tags payments, including trips, which know their own dates
+* Shows where the money went, by day, merchant, tag and rail
+
+<b>What it will not do</b>
+
+No account. No sign-up. No analytics, no crash reporting, no advertising SDK, no
+third-party services of any kind. Your ledger is encrypted with SQLCipher under a
+key held in the Android Keystore, and it never leaves the phone because there is
+no code path that could carry it off.
+
+<b>Two builds</b>
+
+The <b>standard</b> build reads notifications only and asks for no dangerous
+permissions.
+
+The <b>full</b> build adds SMS reading. This is the only way to recover spending
+from before you installed the app: Android exposes no notification history to
+third-party apps, so notifications can only ever be read going forward, while the
+bank messages already sitting in your inbox go back years. Install this one only
+if you want that.

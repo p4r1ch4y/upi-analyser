@@ -96,6 +96,12 @@ and time.
 Verifiable on the artifact, not just claimed:
 
 - No `INTERNET` permission in either flavour.
+- Every dependency is FOSS; the two prebuilt native libraries that reach the APK
+  (`libsqlcipher.so`, and AndroidX's own `libandroidx.graphics.path.so`) come
+  from trusted Maven repositories, which F-Droid's inclusion policy permits.
+  `datastore` and `navigation-compose` were declared but never used, and were
+  removed rather than left in the audit surface — datastore was dragging in a
+  third native library for nothing.
 - `standard` ships 6 permissions and no SMS access at all.
 - No third-party SDKs, no analytics. WorkManager was removed because it merged
   `WAKE_LOCK` and `ACCESS_NETWORK_STATE` into the manifest for no benefit.
@@ -158,5 +164,8 @@ Verifiable on the artifact, not just claimed:
   the chip is not yet wired to a sheet.
 - Editing or deleting a transaction from the UI (`softDelete` exists underneath).
 - PDF and XLS statement import. CSV only.
-- Release signing — release builds still use the debug key.
+- Release signing key. The build is wired for one (`keystore.properties`) and
+  no longer falls back to the debug key, but no key has been created yet, so
+  release builds come out unsigned.
+- GitLab mirror, and screenshots for the F-Droid listing. See `fdroid/README.md`.
 - Instrumented tests. All 102 tests are JVM-only.
