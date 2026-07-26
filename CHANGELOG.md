@@ -13,6 +13,18 @@ characters — this file is the long form.
 
 Nothing yet.
 
+## [0.1.1-alpha] — 2026-07-26
+
+No functional change. `0.1.0-alpha` was tagged before the release pipeline
+existed, so no APK was ever built for it; this is the first version with
+downloadable, signed builds and published checksums.
+
+### Added
+
+- Signed release APKs attached automatically to GitHub and GitLab releases, with
+  `SHA256SUMS.txt`.
+- `CONTRIBUTING.md`, this changelog, and store screenshots.
+
 ## [0.1.0-alpha] — 2026-07-26
 
 First tagged release. Alpha: the capture pipeline and the ledger are real and
@@ -50,5 +62,6 @@ tested, but there is no backup format yet, so treat the data as disposable.
 - Two flavours: `standard` (notifications only, no dangerous permissions) and
   `full` (adds SMS). Most people want `standard`.
 
-[Unreleased]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/compare/v0.1.0-alpha...main
+[Unreleased]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/compare/v0.1.1-alpha...main
+[0.1.1-alpha]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags/v0.1.1-alpha
 [0.1.0-alpha]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags/v0.1.0-alpha

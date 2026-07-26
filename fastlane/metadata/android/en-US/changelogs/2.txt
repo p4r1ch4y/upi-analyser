@@ -1,0 +1,5 @@
+First release with downloadable builds.
+
+Same app as 0.1.0-alpha; this version exists because that tag was cut before the
+release pipeline did, so no APK was ever published for it. Builds are now signed
+and attached to the release automatically, with SHA-256 checksums.
