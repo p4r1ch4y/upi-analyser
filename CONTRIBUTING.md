@@ -71,7 +71,8 @@ expected to come with the negative cases too.
 ./gradlew test lint                    # must both pass
 ```
 
-`BUILD.md` covers the toolchain, the JDK, and why Play Protect warns on install.
+`BUILD.md` covers the toolchain, the JDK, release signing, and why Play Protect
+warns on install.
 
 - **Tests must pass and lint must be clean** on both flavours before a merge
   request is looked at.

@@ -146,9 +146,21 @@ this app does. Three things follow:
 
 ## Signing a release
 
-Release builds read `keystore.properties` from the project root. That file is
-git-ignored; `keystore.properties.example` shows what goes in it and includes the
-`keytool` command to create the key.
+Run this once, ever:
+
+```bash
+JAVA_HOME=/path/to/jdk ./tools/make-release-key.sh   # creates the key, prompts for a password
+./tools/push-ci-secrets.sh                           # pushes it to GitHub + GitLab CI
+```
+
+Release builds read `keystore.properties` from the project root. Both that file
+and the keystore are git-ignored; `keystore.properties.example` documents the
+format if you would rather do it by hand.
+
+**Back up the keystore and its password immediately.** That key is the app's
+permanent identity — Android only accepts an update signed with the same one.
+Losing it means existing users cannot update at all; they would have to
+uninstall, which erases their ledger.
 
 **Without it, the release build is unsigned** — not debug-signed. That matters:
 until recently this project fell back to the debug key, whose private half ships
