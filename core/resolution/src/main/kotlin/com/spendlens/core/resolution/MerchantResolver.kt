@@ -48,16 +48,21 @@ class MerchantResolver {
             }
         }
 
-        // Rung 2: Notification display name
-        if (txn.source == Source.NOTIFICATION && !txn.counterpartyNameRaw.isNullOrBlank()) {
-            val cleanName = cleanNotificationName(txn.counterpartyNameRaw)
-            return Resolution(
-                displayName = cleanName,
-                merchantId = null,
-                categoryId = null,
-                rung = 2,
-                confidence = 0.9f
-            )
+        // Rung 2: Notification display name.
+        // A VPA-shaped "name" is not a display name - fall through to rung 3 so
+        // the VPA structure rules get a chance at it.
+        val rawName = txn.counterpartyNameRaw
+        if (txn.source == Source.NOTIFICATION && !rawName.isNullOrBlank() && !rawName.contains("@")) {
+            val cleanName = cleanNotificationName(rawName)
+            if (cleanName.isNotBlank()) {
+                return Resolution(
+                    displayName = cleanName,
+                    merchantId = null,
+                    categoryId = null,
+                    rung = 2,
+                    confidence = 0.9f
+                )
+            }
         }
 
         // Rung 3: VPA structure parsing

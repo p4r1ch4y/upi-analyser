@@ -1,190 +1,100 @@
-# SpendLens MVP - What's Built
+# SpendLens — Status
 
-##  Complete Foundation
+Alpha. Both flavours build, all 56 unit tests pass, lint is clean, and the app
+captures, stores and displays real payments end to end.
 
-### Core Architecture
+## Working
 
-**Domain Models** (`core/model/`)
--  `Money` - Integer minor units + ISO-4217 currency, never floats
--  `Vpa` - Virtual Payment Address with structure detection
--  `TxnId` - ULID-based sortable IDs
--  `Direction`, `Channel`, `Instrument` enums
--  `RawTxn` - Raw transaction from single source
--  `FusedTxn` - Merged transaction from multiple sources
--  `Merchant`, `Category` - Resolution entities
+### Capture
 
-**Parser Framework** (`core/parser/`)
--  Template-based parser architecture
--  Package name / sender ID routing
--  Regex extraction with named groups
--  Currency detection (never assumes INR)
--  Built-in templates for GPay, PhonePe, Paytm, HDFC
--  Body hash for deduplication
--  100% unit-testable, no Android dependencies
+| Rail | Flavour | Reaches back? |
+|---|---|---|
+| UPI app notifications (live) | both | no — from install onward |
+| Notification tray sweep | both | only what is still in the tray |
+| Bank SMS (live) | `full` | no — from install onward |
+| SMS inbox import | `full` | **yes** — months to years |
+| CSV statement import | both | **yes** — whatever the file holds |
+| Manual entry | both | user's choice of date |
 
-**Resolution Ladder** (`core/resolution/`)
--  6-rung merchant resolver
--  User rules (highest priority)
--  Notification display name
--  VPA structure parsing
--  Merchant directory lookup
--  Fuzzy matching (Levenshtein)
--  Raw VPA fallback (never "Unknown")
+Android exposes no notification history to third-party apps
+(`ACCESS_NOTIFICATION_HISTORY` is signature-level), so SMS and CSV import are the
+only routes to history that predates installation. See `BUILD.md`.
 
-**Fusion Engine** (`core/fusion/`)
--  Cross-source transaction matching
--  RRN exact match (confidence 1.0)
--  Amount + time window match (confidence 0.8-0.9)
--  Field merge with trust hierarchy
--  Source mask tracking
+### Pipeline
 
-**Database** (`core/database/`)
--  SQLDelight schema
--  SQLCipher encryption ready
--  Proper indexes
--  Soft deletes
--  Query methods for day/range/stats
+Every rail converges on one path: **parse → dedupe → fuse → resolve → persist →
+nudge**.
 
-### Android Application
+- **Parser** (`core/parser`) — templates keyed on *message shape* rather than on
+  app, so a wording the author never saw is still read. Currency is always parsed
+  and never assumed. Amounts go through `BigDecimal`, never `Double`. A loose
+  catch-all runs last, so an unrecognised phrasing lands as a reviewable row
+  instead of vanishing.
+- **Dedupe** — SHA-256 over message body *and* post time. A listener rebind
+  replays identical hashes and collapses; two separate ₹20 chai payments do not.
+- **Fusion** (`core/fusion`) — exact RRN → confidence 1.0; matching amount,
+  currency and direction within ±90 s → 0.8. Sources are merged into one row,
+  field by field, by trust; the source mask records who contributed.
+- **Resolution** (`core/resolution`) — the 6-rung ladder. Never returns
+  "Unknown". Naming a merchant writes a rule and replays it over every past
+  payment to the same VPA.
+- **Persistence** (`core/database`) — SQLDelight over SQLCipher. The passphrase
+  is 32 random bytes sealed with an AES-256-GCM key in the Android Keystore; only
+  the wrapped blob reaches SharedPreferences.
 
-**Services**
--  `UpiNotificationListener` - Notification capture service
--  `TransactionCaptureService` - Foreground service (dataSync type)
--  `BootReceiver` - Restart on boot
--  Target package queries (no QUERY_ALL_PACKAGES)
--  **No INTERNET permission** - manifest proves the claim
+### UI
 
-**Design System**
--  Complete color tokens (light + dark mode)
--  Typography scale (Bricolage + IBM Plex Sans)
--  Tabular figures (`tnum`) on all amounts
--  Dynamic color explicitly disabled
--  4dp spacing grid
--  Semantic colors (split violet, review amber, credit green)
+Day stream (time-ordered, not a dashboard), tap bar with square-root scaling,
+receipt-grammar rows with dotted leaders, review chips on low-confidence rows,
+manual-entry sheet, import sheet, live day total in the foreground notification,
+real-time nudge.
 
-**UI Components**
--  **TapBar** - The signature visualization
-  - Square-root height scaling
-  - Color by median (ink/mist/split)
-  - 4dp marks, 3dp gaps
--  **TransactionRow** - Dotted leader lines, receipt grammar
--  **ReviewChip** - Inline amber review prompts
--  **DayStream** - Main UI scaffold
--  Hero total typography
--  Collapsed day blocks
+### Privacy posture
 
-**Build System**
--  Gradle KTS configuration
--  Two flavors (standard/full)
--  ProGuard rules
--  Proper dependencies
--  SQLDelight plugin
--  Compose compiler
+Verifiable on the artifact, not just claimed:
 
-##  Next Steps (To Complete MVP)
+- No `INTERNET` permission in either flavour.
+- `standard` ships 6 permissions and no SMS access at all.
+- No third-party SDKs, no analytics. WorkManager was removed because it merged
+  `WAKE_LOCK` and `ACCESS_NETWORK_STATE` into the manifest for no benefit.
+- Notification bodies are never written to logcat.
 
-### Critical Path
+## Fixed since the first build
 
-1. **Database Integration** (2-3 days)
-   - Wire parser → fusion → database
-   - Implement transaction save
-   - Query layer for UI
-   - Test round-trip
+- **Nothing was ever captured.** Templates were keyed per app and only covered
+  `₹<amount> paid to <name>`. Real BHIM notifications say
+  `Received INR 1.00 in your … account(XX0563) from NAME (vpa@psp)` and matched
+  nothing. Rebuilt around message shapes; the exact field-captured text is now a
+  regression test.
+- Notifications older than 5 minutes were discarded, which made a tray sweep
+  pointless. Removed; the timestamped dedupe hash handles replays instead.
+- SMS was documented but never implemented — no permission, no receiver, no
+  reader.
+- `strings.xml` closed with `</string>`; `ic_notification.xml` had a `<resources>`
+  root and no closing tag; launcher icons did not exist; the theme inherited from
+  `Theme.Material3.*`, which Compose Material3 does not ship. All four broke the
+  resource build.
+- `val notification Intent = …` — a syntax error in the foreground service.
+- `MerchantResolver` fell over a cross-module smart cast; `TemplateParser` threw
+  on any template that did not declare every named group.
+- `Money.formatIndian()` silently dropped digits (₹18,40,000 rendered as
+  ₹1,40,000) and wrote 5 paise as `.5`.
+- `FusedTxn.displayName()` returned the *merchant ID*, and fell back to the
+  literal string "Unknown transaction" — the one thing the product promises never
+  to show.
+- Build stack was unrunnable: AGP 8.5.1 on Gradle 9.3.0 with a JDK-17 toolchain
+  on a machine with no JDK 17. Now Gradle 9.5.0 / AGP 9.3.1 / Kotlin 2.3.21 with
+  a JDK-21 toolchain and the foojay resolver.
 
-2. **Nudge Notification** (1 day)
-   - Show on transaction capture
-   - Format: "₹250 → Swiggy · ₹1,840 today"
-   - Update foreground service notification
+## Not built yet
 
-3. **Real Notification Testing** (3-5 days)
-   - Capture logs from real devices
-   - Build golden test corpus
-   - Add more bank templates
-   - Handle edge cases
-
-4. **Manual Entry** (2 days)
-   - Simple form
-   - Quick-add tile
-   - Cash support
-
-5. **Persistence & State** (1-2 days)
-   - ViewModel layer
-   - Repository pattern
-   - Flow-based updates
-
-### Nice-to-Have for v1
-
-- Transaction detail sheet
-- Edit merchant inline
-- Category selector
-- Week/month views
-- Settings screen
-- Permission onboarding flow
-
-## 📦 What You Can Build Right Now
-
-```bash
-cd upi_analyser
-./setup.sh              # Creates directories
-# Download fonts to app/src/main/res/font/
-./gradlew build         # Compiles successfully
-./gradlew test          # Runs unit tests
-```
-
-##  What Works
-
-1. **Parser** - Can extract transactions from notification payloads
-2. **Resolver** - 6-rung ladder produces merchant names
-3. **Fuser** - Merges duplicate transactions from multiple sources
-4. **UI** - Tap bar renders, day stream displays mock data
-5. **Design System** - Complete visual language implemented
-6. **Manifest** - No INTERNET permission, all services declared
-
-##  What Needs Wiring
-
-- Parser → Database save path
-- Database → UI data flow
-- Notification listener → Nudge display
-- Settings persistence
-- Font file downloads (manual step)
-- Launcher icons (manual step)
-
-##  Code Stats
-
-- **~2,500 lines** of production Kotlin
-- **10 modules** (clean architecture)
-- **Zero third-party SDKs** (except AndroidX/Compose)
-- **100% type-safe** SQL via SQLDelight
-- **No `!!` operators** in core logic
-
-##  Design Fidelity
-
-The implementation matches the design spec exactly:
-
- Hero typography (54sp Bricolage)  
- Tap bar square-root scaling  
- Dotted leader lines  
- Tabular figures (`tnum`)  
- 18dp horizontal padding (not 16dp)  
- Violet for splits only  
- Amber review chips  
- Paper/ink monochrome base  
- No pie charts  
- No gamification  
-
-##  Ready for Development
-
-This is a **production-ready foundation**. The architecture is sound, the design is implemented, and the core logic is there. What remains is:
-
-1. Plumbing (wire things together)
-2. Testing (real notifications)
-3. Polish (edge cases, error states)
-
-You can start building features immediately on this base.
-
----
-
-**Total build time:** ~6 hours of focused development
-**Code quality:** Production-ready, documented, tested
-**Architecture:** Matches specification exactly
-**Next milestone:** Working end-to-end transaction capture in 3-5 days
+- Encrypted backup and restore (Argon2id → XChaCha20-Poly1305 over SAF). The
+  format is specified in `ARCHITECTURE_FLOW.md`; none of it is implemented.
+- Splits, budgets, categories. Tables exist; no UI reaches them.
+- Merchant naming sheet. The review chip is rendered and
+  `TransactionRepository.nameMerchant` works and is tested by construction, but
+  the chip is not yet wired to a sheet.
+- Editing or deleting a transaction from the UI (`softDelete` exists underneath).
+- PDF and XLS statement import. CSV only.
+- Release signing — release builds still use the debug key.
+- Instrumented tests. All 56 tests are JVM-only.

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The `full` flavour adds the SMS rail.
+
+  This is split out from the main manifest on purpose. SMS permissions are the
+  most invasive thing this app asks for, they are what keeps a build off Google
+  Play under the SMS/Call Log policy, and most people do not need them: the
+  notification rail already covers live UPI payments. The `standard` flavour
+  therefore ships without them and the SMS code stays inert.
+
+  What SMS buys you, and notifications cannot: real history. Android exposes no
+  notification log to third-party apps, so a fresh install can only ever see
+  payments from that moment on. The bank SMS inbox already on the phone routinely
+  holds months or years of transaction messages, and it also covers cards, NEFT
+  and ATM withdrawals that never produce a UPI notification.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Live capture of incoming bank messages. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Backfill from messages already on the device. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!--
+      SMS permissions otherwise imply that telephony hardware is required, which
+      would hide the app from tablets and Chromebooks. It is not required: without
+      a modem the SMS rail is simply inert and the notification rail carries the
+      app on its own.
+    -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
+    <application>
+        <receiver
+            android:name=".service.SmsReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

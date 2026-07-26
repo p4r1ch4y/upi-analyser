@@ -1,16 +1,29 @@
 # SpendLens ProGuard rules
 
-# Keep SQLCipher
--keep,includedescriptorclasses class net.sqlcipher.** { *; }
--keep,includedescriptorclasses interface net.sqlcipher.** { *; }
+# --- SQLCipher -------------------------------------------------------------
+# net.zetetic:sqlcipher-android ships its classes under net.zetetic.database,
+# not the net.sqlcipher package the pre-4.5 artifact used. Its JNI layer looks
+# these up by name, so they cannot be renamed or stripped.
+-keep,includedescriptorclasses class net.zetetic.database.** { *; }
+-keep,includedescriptorclasses interface net.zetetic.database.** { *; }
+-keepclasseswithmembernames class net.zetetic.database.** {
+    native <methods>;
+}
 
-# Keep domain models (for debugging)
+# --- SQLDelight ------------------------------------------------------------
+-dontwarn app.cash.sqldelight.**
+-keep class com.spendlens.core.database.** { *; }
+
+# --- Domain models ---------------------------------------------------------
+# Kept so crash reports and database rows stay legible while the app is alpha.
 -keep class com.spendlens.core.model.** { *; }
 
-# Keep Compose runtime
+# --- Compose ---------------------------------------------------------------
 -dontwarn androidx.compose.**
 
-# Remove logging in release
+# --- Logging ---------------------------------------------------------------
+# Strip debug/verbose/info from release builds. Warnings and errors survive:
+# they are the only signal left when a parser template stops matching.
 -assumenosideeffects class android.util.Log {
     public static *** d(...);
     public static *** v(...);

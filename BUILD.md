@@ -1,233 +1,158 @@
 # SpendLens - Build Instructions
 
-## Quick Start
+## Prerequisites
 
-### 1. Prerequisites
+| Requirement | Version | Notes |
+|---|---|---|
+| JDK | **21** | Only needed to *run* Gradle. Android Studio's bundled JBR works. |
+| Gradle | 9.5.0 | Provided by the wrapper — do not install it separately. |
+| Android Gradle Plugin | 9.3.1 | Requires Gradle ≥ 9.5.0. |
+| Kotlin | 2.3.21 | Applied by AGP's built-in Kotlin support. |
+| Android SDK Platform | 36 | `compileSdk` / `targetSdk`. |
+| Build Tools | 36.0.0 | |
+| Min SDK | 26 | Android 8.0 — SQLCipher's floor. |
 
-Install:
-- **Android Studio Hedgehog (2023.1.1)** or newer
-- **JDK 17** (comes with Android Studio)
-- **Android SDK 35** (install via SDK Manager)
+Launcher icons are vector drawables in the repository — nothing to generate.
 
-### 2. Download Fonts
+**Fonts are not committed** (`.gitignore` excludes `*.ttf`). A fresh clone needs
+four files in `app/src/main/res/font/`, both families SIL OFL 1.1:
 
-The app uses two custom font families. Download and place in `app/src/main/res/font/`:
+| File | Source |
+|---|---|
+| `bricolage_grotesque_semibold.ttf` | [Bricolage Grotesque](https://fonts.google.com/specimen/Bricolage+Grotesque) |
+| `ibm_plex_sans_regular.ttf` | [IBM Plex Sans](https://fonts.google.com/specimen/IBM+Plex+Sans) |
+| `ibm_plex_sans_medium.ttf` | IBM Plex Sans |
+| `ibm_plex_sans_semibold.ttf` | IBM Plex Sans |
 
-**Bricolage Grotesque** (for large numbers):
-- Visit: https://fonts.google.com/specimen/Bricolage+Grotesque
-- Download: `bricolage_grotesque_semibold.ttf`
+Without them the resource build fails on `Theme.kt`. Both licences permit
+bundling, so if you would rather the repo build straight from a clone, drop the
+`*.ttf` lines from `.gitignore` and commit the files together with their OFL
+licence text.
 
-**IBM Plex Sans** (for body text):
-- Visit: https://fonts.google.com/specimen/IBM+Plex+Sans
-- Download these weights:
-  - `ibm_plex_sans_regular.ttf`
-  - `ibm_plex_sans_medium.ttf`
-  - `ibm_plex_sans_semibold.ttf`
+### Picking the JDK
 
-Place in: `/app/src/main/res/font/`
-
-### 3. Create Font Directory
-
-```bash
-mkdir -p app/src/main/res/font
-# Then copy the 4 TTF files into this directory
-```
-
-### 4. Generate App Icons
-
-The app needs launcher icons. Use Android Studio's Image Asset tool:
-
-1. Right-click `app/res` → New → Image Asset
-2. Icon Type: Launcher Icons
-3. Name: `ic_launcher`
-4. Choose a simple icon (temporary - design your own later)
-5. Generate
-
-Or create placeholder icons:
+Gradle 9.5 refuses to run on anything below Java 17, and the modules request a
+Java **21** toolchain. If `java -version` reports 8 or 11, point Gradle at a
+newer JDK rather than changing your system default:
 
 ```bash
-mkdir -p app/src/main/res/mipmap-mdpi
-mkdir -p app/src/main/res/mipmap-hdpi
-mkdir -p app/src/main/res/mipmap-xhdpi
-mkdir -p app/src/main/res/mipmap-xxhdpi
-mkdir -p app/src/main/res/mipmap-xxxhdpi
-# Android Studio can auto-generate these
+JAVA_HOME=/path/to/android-studio/jbr ./gradlew assembleStandardDebug
 ```
 
-### 5. Sync Gradle
+The build declares `jvmToolchain(21)` and applies the
+`foojay-resolver-convention` plugin, so on a machine with no JDK 21 Gradle
+downloads one automatically. To use a JDK that is installed somewhere Gradle
+does not look by default, add it to `~/.gradle/gradle.properties` — machine
+specific, so it does not belong in the repository:
+
+```properties
+org.gradle.java.installations.paths=/path/to/android-studio/jbr
+```
+
+In Android Studio this is **Settings → Build → Build Tools → Gradle → Gradle
+JDK**.
+
+## Build
 
 ```bash
-cd /path/to/upi_analyser
-./gradlew build
+# Debug APK, notification rail only
+./gradlew :app:assembleStandardDebug
+
+# Debug APK, notification + SMS rails
+./gradlew :app:assembleFullDebug
+
+# Minified release APKs (currently signed with the debug key)
+./gradlew assembleStandardRelease assembleFullRelease
+
+# Everything
+./gradlew test lint assemble
 ```
 
-Or in Android Studio: **File → Sync Project with Gradle Files**
+Outputs land in `app/build/outputs/apk/<flavor>/<buildType>/`.
 
-### 6. Build
+## Flavours
 
-#### Debug Build (Standard flavor - no SMS)
-```bash
-./gradlew assembleStandardDebug
-```
+The two flavours differ only in whether the SMS rail is compiled in.
 
-#### Debug Build (Full flavor - with SMS)
-```bash
-./gradlew assembleFullDebug
-```
+| | `standard` | `full` |
+|---|---|---|
+| UPI notification capture | yes | yes |
+| Notification-tray backfill | yes | yes |
+| Manual entry, CSV import | yes | yes |
+| Live bank SMS capture | no | yes |
+| SMS inbox history import | no | yes |
+| `READ_SMS` / `RECEIVE_SMS` | **not declared** | declared |
+| Distributable on Google Play | yes | no (SMS/Call Log policy) |
 
-Output: `app/build/outputs/apk/standard/debug/app-standard-debug.apk`
+`standard` is the default. Choose `full` only if you want transaction history
+from before you installed the app — see [the notes on history](#a-note-on-history).
 
-### 7. Install on Device
-
-```bash
-adb install app/build/outputs/apk/standard/debug/app-standard-debug.apk
-```
-
-## Testing the App
-
-### Step 1: Grant Notification Access
-
-1. Open **Settings** → **Apps** → **Special app access**
-2. Select **Notification access**
-3. Enable **SpendLens**
-
-### Step 2: Make a Test Payment
-
-1. Open Google Pay / PhonePe / Paytm
-2. Send ₹1 to yourself or a friend
-3. SpendLens should capture the notification within seconds
-
-### Step 3: Check the UI
-
-- Open SpendLens
-- You should see the transaction in the day stream
-- Verify the tap bar appears
-- Check the dotted leader lines
-
-## Development Workflow
-
-### Running in Android Studio
-
-1. Select run configuration: **app**
-2. Select device (physical device recommended for notification testing)
-3. Click **Run** (Shift+F10)
-
-### Debugging Notification Capture
-
-Enable verbose logging:
+Neither flavour declares `INTERNET`. That is verifiable on the built artifact:
 
 ```bash
-adb shell setprop log.tag.UpiNotificationListener VERBOSE
-adb logcat -s UpiNotificationListener
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump badging \
+  app/build/outputs/apk/standard/release/app-standard-release.apk | grep uses-permission
 ```
 
-### Common Issues
-
-**Fonts not loading?**
-- Verify TTF files are in `app/src/main/res/font/`
-- Check filenames are lowercase with underscores (not hyphens)
-- Clean and rebuild: `./gradlew clean build`
-
-**Notification listener not working?**
-- Check permission is granted
-- Restart the app
-- Check `adb logcat` for "Notification listener connected"
-
-**Build errors about missing resources?**
-- Run `./gradlew clean`
-- File → Invalidate Caches / Restart in Android Studio
-
-## Building for Release
-
-### 1. Create Signing Key
+## Tests
 
 ```bash
-keytool -genkey -v -keystore spendlens-release.jks \
-  -keyalg RSA -keysize 4096 -validity 10000 \
-  -alias spendlens
+./gradlew test
 ```
 
-### 2. Configure Signing in `app/build.gradle.kts`
+56 unit tests across `core:model`, `core:parser`, `core:resolution` and
+`core:fusion`. They are plain JVM tests — no emulator, no Robolectric — because
+every parsing and resolution decision lives in Android-free modules.
 
-```kotlin
-android {
-    signingConfigs {
-        create("release") {
-            storeFile = file("path/to/spendlens-release.jks")
-            storePassword = "your-store-password"
-            keyAlias = "spendlens"
-            keyPassword = "your-key-password"
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-            // ...
-        }
-    }
-}
-```
+`TemplateParserTest` contains verbatim notification and SMS text captured from
+real devices. Those are regression tests in the strict sense: when one fails,
+real payments have stopped being recorded.
 
-### 3. Build Release APK
+## A note on history
 
-```bash
-./gradlew assembleStandardRelease
-```
+Android exposes **no notification history to third-party apps**. The system
+Notification History log is behind `ACCESS_NOTIFICATION_HISTORY`, which is
+signature-level, so anything already swiped away is unreachable no matter what
+this app does. Three things follow:
 
-Output: `app/build/outputs/apk/standard/release/app-standard-release.apk`
+1. **Tray backfill** (both flavours) reads notifications still *in* the tray, so
+   payments made shortly before install, or while the listener was unbound, are
+   picked up. Import → *Scan notifications now*.
+2. **SMS inbox import** (`full` only) is the only rail that reaches genuinely
+   backwards. Bank transaction messages already on the phone typically go back
+   months or years, and cover cards, NEFT and ATM withdrawals that never produce
+   a UPI notification.
+3. **CSV import** (both flavours) covers everything else, via a statement
+   exported from your bank.
 
-## Next Development Tasks
+## Signing a release
 
-### Immediate (MVP Completion)
+`app/build.gradle.kts` currently signs release builds with the debug key, which
+is marked `FIXME`. Before distributing anything, create a keystore and replace
+that `signingConfig`. Keep the keystore and its passwords out of the repository.
 
-- [ ] Wire up database persistence
-- [ ] Implement nudge notification on transaction capture
-- [ ] Add transaction detail sheet
-- [ ] Build notification test corpus from real devices
+## Troubleshooting
 
-### Near-term (v1.0)
+**`Cannot find a Java installation ... matching languageVersion=21`**
+Gradle cannot see a JDK 21 and could not download one. Set
+`org.gradle.java.installations.paths` as above, or check network access.
 
-- [ ] Manual transaction entry
-- [ ] Quick-add tile
-- [ ] Cash transaction support
-- [ ] User rule creation UI
-- [ ] Category management
-- [ ] Basic week/month views
+**`Minimum supported Gradle version is 9.5.0`**
+`gradle/wrapper/gradle-wrapper.properties` was changed, or the wrapper was
+bypassed. Always build through `./gradlew`.
 
-### Later (v2.0)
+**`Unresolved reference` in `com.spendlens.core.database`**
+The SQLDelight sources are generated. Run
+`./gradlew :core:database:generateDebugSpendLensDatabaseInterface`, or just
+build normally.
 
-- [ ] Statement import (CSV/PDF)
-- [ ] Gap detection
-- [ ] E2EE backup via SAF
-- [ ] SMS parsing (pending Play Store approval)
-- [ ] Split tracking
-- [ ] Budget alerts
+**Play Protect blocks the install**
+Expected for a sideloaded, debug-signed app that asks for notification access.
+Choose *Install anyway*. A properly signed release build attracts far less of
+this.
 
-## Testing Checklist
-
-Before each release:
-
-- [ ] Test on Pixel (stock Android)
-- [ ] Test on Xiaomi/Redmi (MIUI)
-- [ ] Test on Samsung (One UI)
-- [ ] Test notification capture from GPay, PhonePe, Paytm
-- [ ] Verify no INTERNET permission in manifest
-- [ ] Test database encryption
-- [ ] Verify tabular figures render correctly
-- [ ] Test dark mode
-- [ ] Check accessibility (TalkBack)
-- [ ] Verify app works fully offline
-
-## Architecture Notes
-
-See `docs/` for detailed documentation:
-- `UPI_SpendLens_Architecture.md` - Technical architecture
-- `SpendLens_Design_System.md` - UI/UX specifications
-- `design_context.md` - Design rationale
-
-## Questions?
-
-- Check the main README.md
-- Review architecture docs
-- Look at inline code comments
-- File an issue on GitHub (when public repo is set up)
+**Nothing is captured after granting notification access**
+Open Import → *Scan notifications now*. If it reports that notification access
+is not connected, revoke and re-grant it in
+Settings → Notifications → Device & app notifications; Android sometimes leaves
+a listener unbound after an app update.

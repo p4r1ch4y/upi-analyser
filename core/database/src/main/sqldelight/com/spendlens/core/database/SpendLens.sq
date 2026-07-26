@@ -2,6 +2,23 @@
 -- Never stores "Unknown" strings, uses NULL instead
 -- All money amounts are integers of minor units
 
+-- Tables are declared before the tables that reference them.
+
+CREATE TABLE categories (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT,
+    parent_id TEXT REFERENCES categories(id),
+    is_system INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE merchants (
+    id TEXT PRIMARY KEY NOT NULL,
+    canonical_name TEXT NOT NULL,
+    category_id TEXT REFERENCES categories(id),
+    origin TEXT NOT NULL DEFAULT 'USER'  -- BUNDLED, USER, IMPORTED
+);
+
 CREATE TABLE accounts (
     id TEXT PRIMARY KEY NOT NULL,
     bank_code TEXT,
@@ -21,6 +38,9 @@ CREATE TABLE transactions (
     account_id TEXT REFERENCES accounts(id),
     counterparty_vpa TEXT,
     counterparty_name_raw TEXT,
+    -- Resolved label. Non-null by construction: the resolution ladder always
+    -- produces something, so the UI never has to render "Unknown".
+    display_name TEXT NOT NULL,
     merchant_id TEXT REFERENCES merchants(id),
     category_id TEXT REFERENCES categories(id),
     confidence REAL NOT NULL DEFAULT 0.0,
@@ -32,16 +52,11 @@ CREATE TABLE transactions (
     flags INTEGER NOT NULL DEFAULT 0,
     linked_txn_id TEXT REFERENCES transactions(id),
     note TEXT,
+    template_id TEXT,      -- Which parser rule produced this
+    body_hash TEXT,        -- Source message hash, for tracing a dedupe decision
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     deleted_at INTEGER
-);
-
-CREATE TABLE merchants (
-    id TEXT PRIMARY KEY NOT NULL,
-    canonical_name TEXT NOT NULL,
-    category_id TEXT REFERENCES categories(id),
-    origin TEXT NOT NULL DEFAULT 'USER'  -- BUNDLED, USER, IMPORTED
 );
 
 CREATE TABLE vpa_rules (
@@ -54,14 +69,6 @@ CREATE TABLE vpa_rules (
     priority INTEGER NOT NULL DEFAULT 0,
     origin TEXT NOT NULL DEFAULT 'USER',
     created_at INTEGER NOT NULL
-);
-
-CREATE TABLE categories (
-    id TEXT PRIMARY KEY NOT NULL,
-    name TEXT NOT NULL,
-    icon TEXT,
-    parent_id TEXT REFERENCES categories(id),
-    is_system INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE budgets (
@@ -93,11 +100,12 @@ CREATE INDEX idx_txn_rrn ON transactions(rrn);
 CREATE INDEX idx_txn_merchant ON transactions(merchant_id, occurred_at DESC);
 CREATE INDEX idx_txn_category ON transactions(category_id, occurred_at DESC);
 CREATE INDEX idx_seen_hashes_time ON seen_hashes(seen_at);
+CREATE INDEX idx_splits_txn ON splits(txn_id);
 
 -- Queries
 selectAllTransactions:
-SELECT * FROM transactions 
-WHERE deleted_at IS NULL 
+SELECT * FROM transactions
+WHERE deleted_at IS NULL
 ORDER BY occurred_at DESC
 LIMIT :limit OFFSET :offset;
 
@@ -105,29 +113,45 @@ selectTransactionById:
 SELECT * FROM transactions WHERE id = :id AND deleted_at IS NULL;
 
 selectTransactionsByDateRange:
-SELECT * FROM transactions 
-WHERE occurred_at >= :startTime 
+SELECT * FROM transactions
+WHERE occurred_at >= :startTime
   AND occurred_at < :endTime
   AND deleted_at IS NULL
 ORDER BY occurred_at DESC;
 
-selectTodayTransactions:
-SELECT * FROM transactions 
-WHERE occurred_at >= :todayStart
+selectTransactionsSince:
+SELECT * FROM transactions
+WHERE occurred_at >= :since
   AND deleted_at IS NULL
 ORDER BY occurred_at DESC;
+
+-- Fusion candidates: same money, same direction, a moment either side.
+selectFusionCandidates:
+SELECT * FROM transactions
+WHERE amount_minor = :amountMinor
+  AND currency = :currency
+  AND direction = :direction
+  AND occurred_at BETWEEN :windowStart AND :windowEnd
+  AND deleted_at IS NULL
+ORDER BY occurred_at DESC;
+
+selectByRrn:
+SELECT * FROM transactions
+WHERE rrn = :rrn AND deleted_at IS NULL
+LIMIT 1;
 
 insertTransaction:
 INSERT INTO transactions (
     id, occurred_at, amount_minor, currency, direction,
-    account_id, counterparty_vpa, counterparty_name_raw,
+    account_id, counterparty_vpa, counterparty_name_raw, display_name,
     merchant_id, category_id, confidence, resolution_rung,
     source_mask, rrn, channel, instrument, flags,
-    linked_txn_id, note, created_at, updated_at, deleted_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    linked_txn_id, note, template_id, body_hash,
+    created_at, updated_at, deleted_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 updateTransaction:
-UPDATE transactions 
+UPDATE transactions
 SET occurred_at = :occurred_at,
     merchant_id = :merchant_id,
     category_id = :category_id,
@@ -135,8 +159,33 @@ SET occurred_at = :occurred_at,
     updated_at = :updated_at
 WHERE id = :id;
 
+-- Applied when a fused sibling arrives on a second rail: fill in the fields the
+-- new source is more trusted for, and record it in the source mask.
+mergeIntoTransaction:
+UPDATE transactions
+SET counterparty_vpa = coalesce(:counterparty_vpa, counterparty_vpa),
+    counterparty_name_raw = coalesce(:counterparty_name_raw, counterparty_name_raw),
+    display_name = :display_name,
+    rrn = coalesce(:rrn, rrn),
+    source_mask = source_mask | :source_bit,
+    confidence = max(confidence, :confidence),
+    updated_at = :updated_at
+WHERE id = :id;
+
+-- User correction: retroactively relabel every past payment to this VPA.
+relabelByVpa:
+UPDATE transactions
+SET display_name = :display_name,
+    merchant_id = :merchant_id,
+    category_id = :category_id,
+    resolution_rung = 1,
+    confidence = 1.0,
+    flags = flags | 64,          -- FLAG_MANUAL_EDIT
+    updated_at = :updated_at
+WHERE counterparty_vpa = :vpa AND deleted_at IS NULL;
+
 softDeleteTransaction:
-UPDATE transactions 
+UPDATE transactions
 SET deleted_at = :deleted_at,
     updated_at = :updated_at
 WHERE id = :id;
@@ -146,15 +195,18 @@ selectVpaRules:
 SELECT * FROM vpa_rules ORDER BY priority DESC;
 
 insertVpaRule:
-INSERT INTO vpa_rules (id, pattern, match_type, merchant_id, merchant_name, category_id, priority, origin, created_at)
+INSERT OR REPLACE INTO vpa_rules (id, pattern, match_type, merchant_id, merchant_name, category_id, priority, origin, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteVpaRule:
+DELETE FROM vpa_rules WHERE id = :id;
 
 -- Merchants
 selectMerchantById:
 SELECT * FROM merchants WHERE id = :id;
 
 insertMerchant:
-INSERT INTO merchants (id, canonical_name, category_id, origin)
+INSERT OR REPLACE INTO merchants (id, canonical_name, category_id, origin)
 VALUES (?, ?, ?, ?);
 
 -- Categories
@@ -162,7 +214,7 @@ selectAllCategories:
 SELECT * FROM categories ORDER BY name;
 
 insertCategory:
-INSERT INTO categories (id, name, icon, parent_id, is_system)
+INSERT OR IGNORE INTO categories (id, name, icon, parent_id, is_system)
 VALUES (?, ?, ?, ?, ?);
 
 -- Seen hashes (for deduplication)
@@ -172,12 +224,12 @@ SELECT 1 FROM seen_hashes WHERE body_hash = :hash LIMIT 1;
 insertSeenHash:
 INSERT OR IGNORE INTO seen_hashes (body_hash, seen_at) VALUES (?, ?);
 
-prunOldHashes:
+pruneOldHashes:
 DELETE FROM seen_hashes WHERE seen_at < :cutoffTime;
 
 -- Aggregations
 selectDayTotal:
-SELECT SUM(amount_minor) as total
+SELECT SUM(amount_minor) AS total_minor
 FROM transactions
 WHERE occurred_at >= :dayStart
   AND occurred_at < :dayEnd
@@ -186,10 +238,10 @@ WHERE occurred_at >= :dayStart
   AND deleted_at IS NULL;
 
 selectDayStats:
-SELECT 
-    COUNT(*) as transaction_count,
-    COUNT(DISTINCT merchant_id) as merchant_count,
-    SUM(amount_minor) as total_minor
+SELECT
+    COUNT(*) AS transaction_count,
+    COUNT(DISTINCT display_name) AS merchant_count,
+    SUM(amount_minor) AS total_minor
 FROM transactions
 WHERE occurred_at >= :dayStart
   AND occurred_at < :dayEnd

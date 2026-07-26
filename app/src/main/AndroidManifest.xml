@@ -23,7 +23,17 @@
     <!-- Storage Access Framework for backups (no INTERNET needed) -->
     <!-- No permission needed - SAF handles it -->
 
-    <!-- Query specific UPI app packages (no QUERY_ALL_PACKAGES) -->
+    <!--
+      Named UPI apps only - never QUERY_ALL_PACKAGES.
+
+      Note this list does not gate notification capture: a bound
+      NotificationListenerService is delivered every app's notifications
+      regardless. It exists so the app can resolve these packages by name (for
+      icons and deep links) without asking to see the user's whole app list.
+
+      Kept in sync with UpiNotificationListener.targetPackages, which is what
+      actually decides whose notifications get parsed.
+    -->
     <queries>
         <package android:name="com.google.android.apps.nbu.paisa.user" />
         <package android:name="com.phonepe.app" />
@@ -31,6 +41,19 @@
         <package android:name="in.org.npci.upiapp" />
         <package android:name="in.amazon.mShop.android.shopping" />
         <package android:name="com.dreamplug.androidapp" />
+        <package android:name="money.super.payments" />
+        <package android:name="in.slice.android" />
+        <package android:name="com.jupiter.consumer" />
+        <package android:name="com.epifi.paisa" />
+        <package android:name="com.naviapp" />
+        <package android:name="com.whatsapp" />
+        <package android:name="com.mobikwik_new" />
+        <package android:name="com.freecharge.android" />
+        <package android:name="com.csam.icici.bank.imobile" />
+        <package android:name="com.snapwork.hdfc" />
+        <package android:name="com.sbi.upi" />
+        <package android:name="com.axis.mobile" />
+        <package android:name="com.msf.kbank.mobile" />
     </queries>
 
     <application
@@ -43,6 +66,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SpendLens"
+        android:usesCleartextTraffic="false"
         tools:targetApi="31">
         
         <!-- Main Activity -->

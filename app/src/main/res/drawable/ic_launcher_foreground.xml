@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher foreground: the tap bar, the product's signature mark.
+  One bar per payment, square-root height scaling, so frequency is visible.
+  Drawn inside the 72x72dp adaptive-icon safe zone (18..90 of the 108 viewport).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF17171F"
+        android:pathData="M28.5,50 h7 v26 h-7 z" />
+    <path
+        android:fillColor="#FF17171F"
+        android:pathData="M39.5,36 h7 v40 h-7 z" />
+    <path
+        android:fillColor="#FF9A9AA4"
+        android:pathData="M50.5,58 h7 v18 h-7 z" />
+    <path
+        android:fillColor="#FF17171F"
+        android:pathData="M61.5,24 h7 v52 h-7 z" />
+    <path
+        android:fillColor="#FF9A9AA4"
+        android:pathData="M72.5,44 h7 v32 h-7 z" />
+</vector>

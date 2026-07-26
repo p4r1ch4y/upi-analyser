@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer: same mark, single flat colour so the system can tint it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M28.5,50 h7 v26 h-7 z M39.5,36 h7 v40 h-7 z M50.5,58 h7 v18 h-7 z M61.5,24 h7 v52 h-7 z M72.5,44 h7 v32 h-7 z" />
+</vector>

@@ -7,6 +7,12 @@
     <!-- Foreground service notification -->
     <string name="service_notification_title">SpendLens is tracking</string>
     <string name="service_notification_text">Spent today: %s</string>
+
+    <!-- Real-time nudge -->
+    <string name="nudge_day_total">%s today</string>
+
+    <!-- Permission gate -->
+    <string name="grant_notification_access">Grant notification access →</string>
     
     <!-- Onboarding -->
     <string name="onboarding_welcome">The UPI tracker that can\'t leak your data</string>
@@ -25,8 +31,35 @@
     <string name="add_manual_transaction">Add transaction</string>
     <string name="split_this">Split this</string>
     <string name="edit_merchant">Edit merchant</string>
+    <string name="action_add">+ Add</string>
+    <string name="action_import">Import</string>
+    <string name="action_importing">Importing…</string>
+    <string name="action_save">Save</string>
+
+    <!-- Manual entry -->
+    <string name="direction_spent">Spent</string>
+    <string name="direction_received">Received</string>
+    <string name="field_amount">Amount</string>
+    <string name="field_merchant">Paid to / received from</string>
+    <string name="field_note">Note (optional)</string>
+    <string name="add_result">Added</string>
+
+    <!-- Import -->
+    <string name="import_title">Import transactions</string>
+    <string name="import_rescan_title">Scan notifications now</string>
+    <string name="import_rescan_body">Reads every payment notification still in your tray. Android does not let apps read notifications you have already dismissed.</string>
+    <string name="import_sms_title">Import from SMS inbox</string>
+    <string name="import_sms_body">Reads bank transaction messages already on this phone — usually months of history. Nothing is uploaded.</string>
+    <string name="import_csv_title">Import a statement (CSV)</string>
+    <string name="import_csv_body">Pick a CSV exported from your bank or payment app.</string>
+    <string name="import_result">Imported %1$d · %2$d already known</string>
+    <string name="import_nothing_found">Nothing to import</string>
+    <string name="import_all_known">Everything found is already in your ledger</string>
+    <string name="import_listener_not_connected">Notification access is not connected yet</string>
+    <string name="import_sms_unavailable">SMS reading is not available in this build</string>
+    <string name="import_failed">Import failed. %1$s</string>
     
     <!-- Empty states -->
     <string name="no_transactions_yet">Your first payment will appear here within seconds of you making it.</string>
     <string name="test_transaction">Send yourself ₹1 to test</string>
-</string>
+</resources>

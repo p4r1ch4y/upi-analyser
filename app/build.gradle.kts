@@ -1,22 +1,21 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.spendlens"
-    compileSdk = 35
+    compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "com.spendlens"
-        minSdk = 26  // Android 8.0 - SQLCipher minimum
-        targetSdk = 35
+        minSdk = libs.versions.minSdk.get().toInt()  // Android 8.0 - SQLCipher minimum
+        targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1
         versionName = "0.1.0-alpha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
+
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -55,10 +54,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -71,6 +66,7 @@ android {
     }
 }
 
+
 dependencies {
     // Core modules
     implementation(project(":core:model"))
@@ -80,40 +76,36 @@ dependencies {
     implementation(project(":core:fusion"))
 
     // AndroidX Core
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-    implementation("androidx.activity:activity-compose:1.9.1")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    // NOTE: no androidx.work here on purpose. WorkManager merges WAKE_LOCK and
+    // ACCESS_NETWORK_STATE into the manifest, and nothing in this app schedules
+    // deferred work. The permission list is part of the product claim.
 
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.navigation:navigation-compose:2.7.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
-    
-    // SQLCipher
-    implementation("net.zetetic:sqlcipher-android:4.5.6@aar")
-    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    implementation(libs.kotlinx.coroutines.android)
 
     // DataStore (for settings)
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation(libs.androidx.datastore.preferences)
 
     // Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(composeBom)
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

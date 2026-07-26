@@ -1,218 +1,264 @@
 package com.spendlens.ui
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextTransform
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.spendlens.R
-import com.spendlens.ui.components.*
+import com.spendlens.SpendLensApp
+import com.spendlens.service.TransactionCaptureService
+import com.spendlens.service.UpiNotificationListener
+import com.spendlens.ui.entry.AddTransactionSheet
+import com.spendlens.ui.entry.ImportSheet
 import com.spendlens.ui.theme.SpendLensTheme
 import com.spendlens.ui.theme.SpendTheme
-import java.text.SimpleDateFormat
-import java.util.*
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: DayStreamViewModel by viewModels {
+        DayStreamViewModel.factory(SpendLensApp.graphOf(this))
+    }
+
+    /**
+     * Notification access is granted in system Settings, so there is no callback
+     * to observe - it is re-read on every resume and drives recomposition.
+     */
+    private var listenerEnabled by mutableStateOf(false)
+
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
+    /**
+     * SMS history is only worth asking for in the flavour that declares it. The
+     * result feeds straight back into an import so the user does not have to tap
+     * twice.
+     */
+    private val requestSmsPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) viewModel.importSmsHistory()
+        }
+
+    /**
+     * Statement import goes through the Storage Access Framework, so the app
+     * needs no storage permission and only ever sees the file the user picked.
+     */
+    private val pickStatement =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri?.let(viewModel::importCsv)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
+        listenerEnabled = isNotificationListenerEnabled()
+        requestPostNotificationsIfNeeded()
+
         setContent {
             SpendLensTheme {
-                DayStreamScreen()
+                val state by viewModel.state.collectAsState()
+                val snackbarHostState = remember { SnackbarHostState() }
+                val context = LocalContext.current
+
+                var showAddSheet by remember { mutableStateOf(false) }
+                var showImportSheet by remember { mutableStateOf(false) }
+
+                LaunchedEffect(Unit) {
+                    viewModel.events.collect { event ->
+                        snackbarHostState.showSnackbar(context.describe(event))
+                    }
+                }
+
+                Scaffold(
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
+                    containerColor = SpendTheme.colors.paper
+                ) { padding ->
+                    DayStreamScreen(
+                        state = state,
+                        onNameMerchant = { /* naming sheet arrives with the edit flow */ },
+                        onAdd = { showAddSheet = true },
+                        onImport = { showImportSheet = true },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = padding.calculateBottomPadding()),
+                        header = if (listenerEnabled) null else {
+                            { ConnectPrompt(onClick = ::openListenerSettings) }
+                        }
+                    )
+                }
+
+                if (showAddSheet) {
+                    AddTransactionSheet(
+                        onDismiss = { showAddSheet = false },
+                        onSubmit = { amountMinor, name, direction, note ->
+                            viewModel.addManual(
+                                amountMinor = amountMinor,
+                                displayName = name,
+                                direction = direction,
+                                occurredAt = System.currentTimeMillis(),
+                                note = note
+                            )
+                            showAddSheet = false
+                        }
+                    )
+                }
+
+                if (showImportSheet) {
+                    ImportSheet(
+                        smsSupported = viewModel.smsSupported,
+                        onDismiss = { showImportSheet = false },
+                        onRescanNotifications = {
+                            showImportSheet = false
+                            UpiNotificationListener.requestRebind(this)
+                            viewModel.rescanNotifications()
+                        },
+                        onImportSms = {
+                            showImportSheet = false
+                            importSmsHistory()
+                        },
+                        onImportCsv = {
+                            showImportSheet = false
+                            pickStatement.launch(STATEMENT_MIME_TYPES)
+                        }
+                    )
+                }
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        listenerEnabled = isNotificationListenerEnabled()
+        if (listenerEnabled) {
+            TransactionCaptureService.start(this)
+            // A listener that was killed stays unbound until asked to rebind, and
+            // an unbound listener silently captures nothing.
+            if (!UpiNotificationListener.isConnected) {
+                UpiNotificationListener.requestRebind(this)
+            }
+        }
+    }
+
+    private fun importSmsHistory() {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) viewModel.importSmsHistory() else requestSmsPermission.launch(Manifest.permission.READ_SMS)
+    }
+
+    private fun requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
+    private fun openListenerSettings() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+    }
+
+    private companion object {
+        /**
+         * Bank exports are handed out with wildly inconsistent MIME types, so the
+         * generic ones are included alongside text/csv.
+         */
+        val STATEMENT_MIME_TYPES = arrayOf(
+            "text/csv",
+            "text/comma-separated-values",
+            "application/csv",
+            "text/plain",
+            "application/octet-stream"
+        )
+    }
 }
 
+/** Renders a one-shot event into user-facing text. */
+private fun android.content.Context.describe(event: DayStreamEvent): String = when (event) {
+    is DayStreamEvent.Imported -> {
+        val summary = event.summary
+        when {
+            summary.considered == 0 -> getString(R.string.import_nothing_found)
+            summary.inserted == 0 && summary.merged == 0 -> getString(R.string.import_all_known)
+            else -> getString(R.string.import_result, summary.inserted, summary.duplicates)
+        }
+    }
+    DayStreamEvent.TransactionAdded -> getString(R.string.add_result)
+    DayStreamEvent.ListenerNotConnected -> getString(R.string.import_listener_not_connected)
+    DayStreamEvent.SmsUnavailable -> getString(R.string.import_sms_unavailable)
+    is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
+}
+
+/**
+ * Shown until notification access is granted. Without it the app captures
+ * nothing, so this is the only state worth interrupting the stream for.
+ */
 @Composable
-fun DayStreamScreen() {
+private fun ConnectPrompt(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
-    
-    // Mock data for demonstration
-    val mockTransactions = listOf(
-        MockTransaction("09:12", "Swiggy", "₹250", 25000),
-        MockTransaction("10:40", "9822014455@ybl", "₹80", 8000, needsReview = true),
-        MockTransaction("13:22", "Blinkit", "₹600", 60000, isSplit = true, paidAmount = "₹2,400"),
-        MockTransaction("17:05", "Chai stall", "₹20", 2000),
-    )
-    
-    val tapBarItems = mockTransactions.map { 
-        TapBarItem(it.amountMinor, it.isSplit) 
-    }
-    
-    val totalToday = mockTransactions.sumOf { it.amountMinor }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colors.paper)
-            .statusBarsPadding()
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp)
+            .padding(top = 16.dp)
+            .background(colors.reviewBg, RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        
-        // Today section
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp)
-                .padding(top = 20.dp, bottom = 4.dp)
-        ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "TODAY",
-                    style = typography.labelSmall,
-                    color = colors.graphite,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Text(
-                    text = "SAT 26 JUL",
-                    style = typography.labelSmall,
-                    color = colors.graphite
-                )
-            }
-            
-            // Hero total
-            Text(
-                text = formatIndianCurrency(totalToday),
-                style = typography.displayLarge,
-                color = colors.ink
-            )
-            
-            // Meta
-            Text(
-                text = stringResource(R.string.taps_merchants, mockTransactions.size, 4),
-                style = typography.bodySmall,
-                color = colors.graphite,
-                modifier = Modifier.padding(top = 3.dp)
-            )
-            
-            // Tap bar - the signature
-            TapBar(
-                transactions = tapBarItems,
-                modifier = Modifier.padding(top = 14.dp)
-            )
-        }
-        
-        // Transaction list
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp)
-        ) {
-            items(mockTransactions) { txn ->
-                TransactionRow(
-                    timestamp = txn.timestamp,
-                    merchantName = txn.merchantName,
-                    amount = txn.amount,
-                    modifier = Modifier.fillMaxWidth(),
-                    subRow = when {
-                        txn.needsReview -> {
-                            { ReviewChip("Name this merchant", onClick = {}) }
-                        }
-                        txn.isSplit -> {
-                            {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(
-                                        text = "Split 4 ways",
-                                        style = typography.bodySmall,
-                                        color = colors.split
-                                    )
-                                    Text(
-                                        text = "·",
-                                        style = typography.bodySmall,
-                                        color = colors.mist
-                                    )
-                                    Text(
-                                        text = "${txn.paidAmount} paid",
-                                        style = typography.bodySmall,
-                                        color = colors.mist
-                                    )
-                                }
-                            }
-                        }
-                        else -> null
-                    }
-                )
-                
-                // Row separator
-                if (mockTransactions.indexOf(txn) < mockTransactions.size - 1) {
-                    Spacer(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(colors.ruleSoft)
-                    )
-                }
-            }
-        }
-        
-        // Collapsed past day
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.paperSunk)
-                .padding(horizontal = 18.dp, vertical = 14.dp)
-        ) {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "FRI 25 JUL",
-                        style = typography.labelSmall,
-                        color = colors.graphite
-                    )
-                    Text(
-                        text = "₹620",
-                        style = typography.displaySmall,
-                        color = colors.ink
-                    )
-                }
-                Text(
-                    text = "6 taps · 5 merchants",
-                    style = typography.bodySmall,
-                    color = colors.graphite,
-                    modifier = Modifier.padding(top = 1.dp)
-                )
-            }
-        }
+        Text(
+            text = stringResource(R.string.onboarding_notification_permission_title),
+            style = typography.bodyMedium,
+            color = colors.review
+        )
+        Text(
+            text = stringResource(R.string.onboarding_notification_permission_body),
+            style = typography.bodySmall,
+            color = colors.graphite,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+        Text(
+            text = stringResource(R.string.grant_notification_access),
+            style = typography.bodySmall,
+            color = colors.review,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
-}
-
-data class MockTransaction(
-    val timestamp: String,
-    val merchantName: String,
-    val amount: String,
-    val amountMinor: Long,
-    val needsReview: Boolean = false,
-    val isSplit: Boolean = false,
-    val paidAmount: String = ""
-)
-
-fun formatIndianCurrency(minorUnits: Long): String {
-    val major = minorUnits / 100
-    val formatted = major.toString()
-        .reversed()
-        .chunked(3)
-        .mapIndexed { index, chunk ->
-            if (index == 0) chunk else chunk.take(2)
-        }
-        .joinToString(",")
-        .reversed()
-    return "₹$formatted"
 }

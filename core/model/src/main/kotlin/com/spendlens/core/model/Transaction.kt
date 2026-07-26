@@ -33,6 +33,8 @@ data class FusedTxn(
     val accountId: String?,
     val counterpartyVpa: String?,
     val counterpartyNameRaw: String?,
+    /** Label produced by the resolution ladder. Never blank, never "Unknown". */
+    val displayName: String,
     val merchantId: String?,
     val categoryId: String?,
     val confidence: Float,           // 0.0-1.0 resolution confidence
@@ -59,12 +61,15 @@ data class FusedTxn(
 
     fun hasFlag(flag: Int): Boolean = (flags and flag) != 0
 
-    /** Display name with fallback to VPA */
-    fun displayName(): String {
-        return merchantId 
-            ?: counterpartyNameRaw 
-            ?: counterpartyVpa?.let { Vpa(it).displayName() }
-            ?: "Unknown transaction"
+    /**
+     * Best label available if [displayName] were ever empty. Falls back down the
+     * same order the resolution ladder uses and ends at the raw VPA - never at
+     * the word "Unknown", which is the one thing this product refuses to show.
+     */
+    fun label(): String = displayName.ifBlank {
+        counterpartyNameRaw?.takeIf { it.isNotBlank() }
+            ?: counterpartyVpa?.takeIf { it.isNotBlank() }
+            ?: "Manual entry"
     }
 }
 

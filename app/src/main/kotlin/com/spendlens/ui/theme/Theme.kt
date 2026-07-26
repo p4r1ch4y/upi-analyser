@@ -51,9 +51,13 @@ fun SpendLensTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
+            // Only the icon tint is set. Window.statusBarColor is a no-op from
+            // API 35 onward under edge-to-edge; the bar is transparent and the
+            // Compose background shows through it.
             val window = (view.context as Activity).window
-            window.statusBarColor = spendColors.paper.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val controller = WindowCompat.getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !darkTheme
+            controller.isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

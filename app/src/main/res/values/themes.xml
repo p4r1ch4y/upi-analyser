@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Disable Material You dynamic color - the palette is the identity -->
-    <style name="Theme.SpendLens" parent="Theme.Material3.DayNight.NoActionBar">
+    <!--
+      This is a Compose-only app. androidx.compose.material3 ships no XML themes,
+      so the activity theme parents off the platform theme rather than
+      Theme.Material3.* (which lives in com.google.android.material, a dependency
+      this app deliberately does not take).
+
+      Material You dynamic color is not used anywhere - the palette is the identity.
+    -->
+    <style name="Theme.SpendLens" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Matches SpendColors.paper, so there is no white flash before Compose draws. -->
+        <item name="android:windowBackground">@color/paper</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:enforceNavigationBarContrast">false</item>
     </style>
 </resources>

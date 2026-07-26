@@ -1,17 +1,19 @@
 plugins {
+    alias(libs.plugins.kotlin.jvm)
     id("java-library")
-    id("org.jetbrains.kotlin.jvm")
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(libs.versions.toolchain.get().toInt())
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.jvmTarget.get()))
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(libs.versions.jvmTarget.get().toInt())
 }
 
 dependencies {
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
 }

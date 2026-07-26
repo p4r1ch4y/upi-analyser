@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors ui/theme/Color.kt. Only the window background needs an XML twin. -->
+    <color name="paper">#FCFBF8</color>
+</resources>
