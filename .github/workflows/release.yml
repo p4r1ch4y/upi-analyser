@@ -44,13 +44,20 @@ jobs:
         run: ./gradlew --no-daemon test lint
 
       - name: Restore the signing key
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          # Checked here rather than in an `if:` expression: the `secrets`
+          # context is not available in a step-level condition, and using it
+          # there makes the entire workflow file invalid — GitHub then fails the
+          # run in 0s with no log to read.
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No signing key configured — the build will produce unsigned APKs."
+            exit 0
+          fi
           echo "$KEYSTORE_BASE64" | base64 -d > spendlens-release.jks
           {
             echo "storeFile=spendlens-release.jks"
