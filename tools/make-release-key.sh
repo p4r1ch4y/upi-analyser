@@ -46,15 +46,24 @@ echo "identity fields are cosmetic — they show up in the certificate and nothi
 echo "checks them. The password is what matters: put it in a password manager"
 echo "before you close this terminal."
 echo
-read -rsp "Choose a keystore password (min 6 chars): " PASS; echo
+# 8 is keytool's 6 plus GitLab's masking floor: GitLab refuses to mask a CI
+# variable shorter than 8 characters, and an unmasked signing password is one
+# stray `echo` away from appearing in a build log.
+read -rsp "Choose a keystore password (8+ chars, letters/digits/@:.~ only): " PASS; echo
 read -rsp "Type it again: " PASS2; echo
 
 if [ "$PASS" != "$PASS2" ]; then
     echo "error: passwords do not match."
     exit 1
 fi
-if [ "${#PASS}" -lt 6 ]; then
-    echo "error: keytool requires at least 6 characters."
+if [ "${#PASS}" -lt 8 ]; then
+    echo "error: use at least 8 characters — GitLab will not mask anything shorter."
+    exit 1
+fi
+if ! [[ "$PASS" =~ ^[A-Za-z0-9+/=@:.~]+$ ]]; then
+    echo "error: GitLab can only mask passwords drawn from A-Z a-z 0-9 + / = @ : . ~"
+    echo "       Other characters work fine for signing, but the password would"
+    echo "       have to be stored in CI unmasked."
     exit 1
 fi
 

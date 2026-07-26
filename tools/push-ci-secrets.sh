@@ -20,7 +20,6 @@ if [ ! -f keystore.properties ]; then
     exit 1
 fi
 
-# shellcheck disable=SC1091
 STORE_FILE=$(grep -E '^storeFile=' keystore.properties | cut -d= -f2-)
 STORE_PASS=$(grep -E '^storePassword=' keystore.properties | cut -d= -f2-)
 KEY_ALIAS=$(grep -E '^keyAlias=' keystore.properties | cut -d= -f2-)
@@ -43,25 +42,58 @@ push_github() {
     gh secret list
 }
 
+# GitLab will only mask a value that is a single line, at least 8 characters,
+# and drawn from the Base64 alphabet plus @ : . ~. A password with a hyphen,
+# underscore, or punctuation outside that set is rejected outright — with a bare
+# `400 {message: {value: [is invalid]}}` that says nothing about why.
+maskable() {
+    local v="$1"
+    [ "${#v}" -ge 8 ] || return 1
+    [[ "$v" =~ ^[A-Za-z0-9+/=@:.~]+$ ]] || return 1
+    return 0
+}
+
 push_gitlab() {
     command -v glab >/dev/null || { echo "skip gitlab: glab not installed"; return; }
     echo "→ GitLab CI/CD variables"
-    # Masked so they never appear in job output; protected so they are only
-    # exposed to pipelines on protected refs — which is why the v* tag pattern
-    # needs protecting too (Settings -> Repository -> Protected tags).
+
     set_var() {
-        local key="$1" value="$2" masked="$3"
+        local key="$1" value="$2" want_mask="$3"
+        local flags=(--protected)
+
+        # Note the value arrives on stdin with no positional argument: glab only
+        # reads stdin when the value is omitted entirely. Passing `-` sets the
+        # variable to the literal string "-", silently and successfully.
+        if [ "$want_mask" = "yes" ] && maskable "$value"; then
+            flags+=(--masked)
+        elif [ "$want_mask" = "yes" ]; then
+            echo "   note: $key cannot be masked by GitLab (needs 8+ chars from"
+            echo "         A-Z a-z 0-9 + / = @ : . ~). Stored protected but unmasked."
+        fi
+
         glab variable delete "$key" >/dev/null 2>&1 || true
-        printf '%s' "$value" | glab variable set "$key" --masked="$masked" --protected -
+        printf '%s' "$value" | glab variable set "$key" "${flags[@]}" >/dev/null
+        echo "   set $key"
     }
-    # A base64 keystore is far too long for GitLab's masking rules, so it goes
-    # in unmasked but still protected. It is a public certificate wrapper around
-    # a password-protected key; the password is what stays masked.
-    set_var ANDROID_KEYSTORE_BASE64   "$KEYSTORE_B64" false
-    set_var ANDROID_KEYSTORE_PASSWORD "$STORE_PASS"   true
-    set_var ANDROID_KEY_ALIAS         "$KEY_ALIAS"    true
-    set_var ANDROID_KEY_PASSWORD      "$KEY_PASS"     true
-    glab variable list
+
+    # The base64 keystore is thousands of characters, far past what GitLab will
+    # mask, so it is stored protected only. That is acceptable: it is a
+    # password-protected container, and the password beside it is what matters.
+    set_var ANDROID_KEYSTORE_BASE64   "$KEYSTORE_B64" no
+    set_var ANDROID_KEYSTORE_PASSWORD "$STORE_PASS"   yes
+    set_var ANDROID_KEY_ALIAS         "$KEY_ALIAS"    yes
+    set_var ANDROID_KEY_PASSWORD      "$KEY_PASS"     yes
+
+    echo
+    echo "   verifying what GitLab actually stored:"
+    glab api "projects/${CI_PROJECT_PATH:-$(git remote get-url gitlab 2>/dev/null | sed -E 's#.*[:/]([^/]+/[^/]+)\.git#\1#' | sed 's#/#%2F#')}/variables" 2>/dev/null \
+        | python3 -c "
+import sys, json
+try:
+    for v in json.load(sys.stdin):
+        print(f\"     {v['key']:28} masked={v['masked']} protected={v['protected']} length={len(v['value'])}\")
+except Exception:
+    print('     (could not read them back — check the project settings)')"
 }
 
 case "$TARGET" in
@@ -73,4 +105,4 @@ esac
 
 echo
 echo "Done. Cut a release with:"
-echo "    git tag -a v0.1.1 -m 'SpendLens 0.1.1' && git push --tags"
+echo "    git tag -a v0.1.1 -m 'SpendLens 0.1.1' && git push gitlab v0.1.1 && git push origin v0.1.1"
