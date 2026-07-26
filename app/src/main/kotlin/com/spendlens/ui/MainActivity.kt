@@ -54,6 +54,8 @@ import com.spendlens.ui.dashboard.DashboardViewModel
 import com.spendlens.ui.entry.AddTransactionSheet
 import com.spendlens.ui.entry.ImportSheet
 import com.spendlens.ui.entry.MoreSheet
+import com.spendlens.ui.entry.DEVELOPER_EMAIL
+import com.spendlens.ui.entry.openSite
 import com.spendlens.ui.entry.sendFeedback
 import com.spendlens.ui.entry.SourceRecord
 import com.spendlens.ui.entry.SplitSheet
@@ -295,9 +297,18 @@ class MainActivity : ComponentActivity() {
                             showMoreSheet = false
                             createExportFile.launch(exportFileName())
                         },
+                        // Try it and see, rather than asking first. A pre-flight
+                        // resolveActivity is only as truthful as the <queries>
+                        // declaration behind it, and getting that wrong reports
+                        // "no email app" on a phone that plainly has one.
                         onFeedback = {
                             showMoreSheet = false
-                            if (!hasEmailApp()) viewModel.reportNoEmailApp() else sendFeedback(this)
+                            if (!sendFeedback(this)) viewModel.reportNoEmailApp()
+                        },
+                        onOpenSite = { if (!openSite(this)) viewModel.reportNoBrowser() },
+                        onCopyEmail = {
+                            copyToClipboard(DEVELOPER_EMAIL)
+                            viewModel.reportCopied()
                         }
                     )
                 }
@@ -364,13 +375,9 @@ class MainActivity : ComponentActivity() {
         if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
-    /**
-     * Checked before firing the intent so a phone with no mail client gets an
-     * explanation rather than nothing happening at all.
-     */
-    private fun hasEmailApp(): Boolean {
-        val probe = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
-        return probe.resolveActivity(packageManager) != null
+    private fun copyToClipboard(text: String) {
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("SpendLens", text))
     }
 
     private fun exportFileName(): String {
@@ -451,6 +458,8 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     is DayStreamEvent.Tagged -> getString(R.string.tagged_result, event.count, event.tagName)
     is DayStreamEvent.Exported -> getString(R.string.export_done, event.rowCount)
     DayStreamEvent.NoEmailApp -> getString(R.string.settings_no_email_app)
+    DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
+    DayStreamEvent.Copied -> getString(R.string.settings_copied)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

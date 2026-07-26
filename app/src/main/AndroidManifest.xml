@@ -35,6 +35,20 @@
       actually decides whose notifications get parsed.
     -->
     <queries>
+        <!--
+          Package visibility filtering hides every other app from resolveActivity
+          unless it is declared here. Without this, the check for a mail client
+          returned "none installed" on a phone with Gmail on the home screen.
+        -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+
         <package android:name="com.google.android.apps.nbu.paisa.user" />
         <package android:name="com.phonepe.app" />
         <package android:name="net.one97.paytm" />

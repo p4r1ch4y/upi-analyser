@@ -1,0 +1,6 @@
+Every payment now keeps the notification or SMS it was read out of, shown under
+Source when you open it — so you can check a figure rather than take it on faith.
+
+Also: export to CSV, a configurable currency, contact-the-developer, and a much
+deeper report — filter by expense or income, group by merchant, tag or payment
+type, sort, and see each row's share of the total.

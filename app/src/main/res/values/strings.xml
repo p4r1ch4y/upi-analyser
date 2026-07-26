@@ -167,6 +167,10 @@
     <string name="settings_feedback">Contact the developer</string>
     <string name="settings_feedback_note">SpendLens has no internet access, so this opens your email app. Nothing is sent until you send it.</string>
     <string name="settings_feedback_action">Write an email →</string>
-    <string name="settings_no_email_app">No email app is set up on this phone</string>
+    <string name="settings_no_email_app">No email app is set up on this phone — the address is below</string>
+    <string name="settings_no_browser">No browser is set up on this phone</string>
+    <string name="settings_tap_to_copy">tap to copy</string>
+    <string name="settings_tap_to_open">tap to open</string>
+    <string name="settings_copied">Copied to clipboard</string>
     <string name="settings_version">SpendLens %1$s · %2$s build</string>
 </resources>

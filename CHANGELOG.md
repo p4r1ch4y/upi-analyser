@@ -11,6 +11,10 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.2-alpha] — 2026-07-27
+
 ### Added
 
 - **Source messages.** Every payment keeps the notification or SMS it was read
@@ -30,6 +34,10 @@ characters — this file is the long form.
   now name the payee instead of falling to the catch-all and reading "Payment".
 - Changing currency did not redraw anything: the formatter was a global, which
   Compose cannot observe. Amounts now read it through a CompositionLocal.
+- "No email app is set up on this phone" on phones that plainly had one. The
+  check used `resolveActivity`, which returns null under package visibility
+  filtering unless the app declares a matching `<queries>` entry. The address and
+  website are now also shown as text, so they are usable whatever the intent does.
 
 ## [0.1.1-alpha] — 2026-07-26
 
@@ -80,6 +88,7 @@ tested, but there is no backup format yet, so treat the data as disposable.
 - Two flavours: `standard` (notifications only, no dangerous permissions) and
   `full` (adds SMS). Most people want `standard`.
 
-[Unreleased]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/compare/v0.1.1-alpha...main
+[Unreleased]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/compare/v0.1.2-alpha...main
+[0.1.2-alpha]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags/v0.1.2-alpha
 [0.1.1-alpha]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags/v0.1.1-alpha
 [0.1.0-alpha]: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags/v0.1.0-alpha

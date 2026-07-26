@@ -113,6 +113,8 @@ data class DayStreamUiState(
 sealed interface DayStreamEvent {
     data class Exported(val rowCount: Int) : DayStreamEvent
     data object NoEmailApp : DayStreamEvent
+    data object NoBrowser : DayStreamEvent
+    data object Copied : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
     data object ListenerNotConnected : DayStreamEvent
@@ -146,6 +148,14 @@ class DayStreamViewModel(
 
     fun reportNoEmailApp() {
         viewModelScope.launch { _events.send(DayStreamEvent.NoEmailApp) }
+    }
+
+    fun reportNoBrowser() {
+        viewModelScope.launch { _events.send(DayStreamEvent.NoBrowser) }
+    }
+
+    fun reportCopied() {
+        viewModelScope.launch { _events.send(DayStreamEvent.Copied) }
     }
 
     fun setCurrency(code: String) {

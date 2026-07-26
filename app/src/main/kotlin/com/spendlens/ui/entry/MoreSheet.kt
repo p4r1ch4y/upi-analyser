@@ -54,7 +54,9 @@ fun MoreSheet(
     onDismiss: () -> Unit,
     onCurrency: (String) -> Unit,
     onExport: (includeSourceMessages: Boolean) -> Unit,
-    onFeedback: () -> Unit
+    onFeedback: () -> Unit,
+    onOpenSite: () -> Unit,
+    onCopyEmail: () -> Unit
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
@@ -154,6 +156,21 @@ fun MoreSheet(
                 onClick = onFeedback
             )
 
+            // Shown plainly as well as wired to intents. If no mail app resolves
+            // — or the user simply wants to write from a laptop — the address has
+            // to be readable and copyable rather than hidden behind a button that
+            // may do nothing.
+            ContactLine(
+                value = DEVELOPER_EMAIL,
+                hint = stringResource(R.string.settings_tap_to_copy),
+                onClick = onCopyEmail
+            )
+            ContactLine(
+                value = DEVELOPER_SITE.removePrefix("https://").removeSuffix("/"),
+                hint = stringResource(R.string.settings_tap_to_open),
+                onClick = onOpenSite
+            )
+
             // ---------------------------------------------------------- about
             Text(
                 text = stringResource(
@@ -199,6 +216,23 @@ private fun CurrencyChip(code: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+private fun ContactLine(value: String, hint: String, onClick: () -> Unit) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = value, style = typography.bodySmall, color = colors.ink)
+        Text(text = hint, style = typography.labelSmall, color = colors.mist)
+    }
+}
+
+@Composable
 private fun ActionRow(text: String, onClick: () -> Unit, enabled: Boolean = true) {
     val colors = SpendTheme.colors
     Text(
@@ -223,7 +257,7 @@ private fun ActionRow(text: String, onClick: () -> Unit, enabled: Boolean = true
  * goes in, and they see the whole draft in their mail client before it is sent —
  * which matters in an app whose entire claim is that it cannot transmit anything.
  */
-fun sendFeedback(context: Context) {
+fun sendFeedback(context: Context): Boolean {
     val subject = "SpendLens ${BuildConfig.VERSION_NAME} (${BuildConfig.FLAVOR}) — feedback"
     val body = buildString {
         appendLine()
@@ -245,7 +279,17 @@ fun sendFeedback(context: Context) {
         putExtra(Intent.EXTRA_TEXT, body)
     }
 
-    runCatching { context.startActivity(intent) }
+    // Attempted rather than pre-checked: resolveActivity is only as truthful as
+    // the <queries> declaration behind it, and a wrong one reports "no email app"
+    // on a phone that plainly has one.
+    return runCatching { context.startActivity(intent) }.isSuccess
+}
+
+/** Opens the project site in whatever browser the user has. */
+fun openSite(context: Context): Boolean {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(DEVELOPER_SITE))
+    return runCatching { context.startActivity(intent) }.isSuccess
 }
 
 const val DEVELOPER_EMAIL = "iamcsubrata@gmail.com"
+const val DEVELOPER_SITE = "https://p4r1ch4y.github.io/"

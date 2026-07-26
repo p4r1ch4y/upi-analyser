@@ -25,9 +25,9 @@ RepoType: git
 Repo: https://gitlab.com/p4r1ch4y-group/SpendLens.git
 
 Builds:
-  - versionName: 0.1.1-alpha
-    versionCode: 2
-    commit: v0.1.1-alpha
+  - versionName: 0.1.2-alpha
+    versionCode: 3
+    commit: v0.1.2-alpha
     subdir: app
     gradle:
       - standard
@@ -36,5 +36,5 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.1.1-alpha
-CurrentVersionCode: 2
+CurrentVersion: 0.1.2-alpha
+CurrentVersionCode: 3
