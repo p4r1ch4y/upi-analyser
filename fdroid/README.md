@@ -18,7 +18,7 @@ SMS is the only rail that can recover spending from before installation.
 
 | Requirement | Status |
 |---|---|
-| Public repo with real source | GitHub today; **GitLab mirror still to create** |
+| Public repo with real source | [https://gitlab.com/p4r1ch4y-group/SpendLens](https://gitlab.com/p4r1ch4y-group/SpendLens) |
 | FOSS licence file | `LICENSE` — GPL-3.0 |
 | Version tag per release | `v0.1.0-alpha` |
 | Builds from a clean checkout | verified — fonts are committed, no generated files needed |
@@ -61,11 +61,32 @@ and go in
 
 F-Droid publishes without them; they only affect how the listing looks.
 
+## Before submitting
+
+Two things still need doing, and both need a human:
+
+1. **Screenshots** — see below. F-Droid publishes without them, but the listing
+   looks bare.
+2. **Make the project public.** Verified private as of the last check — an
+   anonymous clone fails, and F-Droid's build server clones anonymously over
+   HTTPS, so the build would never start:
+
+   *Settings → General → Visibility, project features, permissions →
+   Project visibility → **Public** → Save changes.*
+
+   Confirm it worked from a machine that is not logged in:
+
+   ```bash
+   git clone --depth 1 https://gitlab.com/p4r1ch4y-group/SpendLens.git
+   ```
+
+3. **Fill in `AuthorName`** in `fdroid/com.spendlens.yml` if you want a developer
+   name on the listing. Left blank rather than guessed.
+
 ## Submitting
 
-1. Push the repository to GitLab and update the three `REPLACE_ME` URLs in
-   `fdroid/com.spendlens.yml`.
-2. Tag the release commit: `git tag v0.1.0-alpha && git push --tags`.
+1. ~~Push the repository to GitLab~~ — done: https://gitlab.com/p4r1ch4y-group/SpendLens
+2. ~~Tag the release commit~~ — done: `v0.1.0-alpha`
 3. Fork <https://gitlab.com/fdroid/fdroiddata>, branch `com.spendlens`.
 4. Copy `fdroid/com.spendlens.yml` to `metadata/com.spendlens.yml` in the fork.
 5. `fdroid lint com.spendlens` and `fdroid rewritemeta com.spendlens`.

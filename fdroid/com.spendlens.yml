@@ -8,21 +8,21 @@
 #   fdroid rewritemeta com.spendlens
 #   fdroid build -v -l com.spendlens
 #
-# Replace the GitLab URLs once the mirror exists — F-Droid wants the canonical
-# source location, and its own infrastructure is GitLab.
-
 Categories:
   - Money
 License: GPL-3.0-only
-AuthorName: SpendLens
-SourceCode: https://gitlab.com/REPLACE_ME/spendlens
-IssueTracker: https://gitlab.com/REPLACE_ME/spendlens/-/issues
-Changelog: https://gitlab.com/REPLACE_ME/spendlens/-/tags
+# Optional, and left blank on purpose rather than guessed — fill in the name you
+# want shown as the developer on the F-Droid listing.
+# AuthorName:
+# AuthorEmail:
+SourceCode: https://gitlab.com/p4r1ch4y-group/SpendLens
+IssueTracker: https://gitlab.com/p4r1ch4y-group/SpendLens/-/issues
+Changelog: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags
 
 AutoName: SpendLens
 
 RepoType: git
-Repo: https://gitlab.com/REPLACE_ME/spendlens.git
+Repo: https://gitlab.com/p4r1ch4y-group/SpendLens.git
 
 Builds:
   - versionName: 0.1.0-alpha
