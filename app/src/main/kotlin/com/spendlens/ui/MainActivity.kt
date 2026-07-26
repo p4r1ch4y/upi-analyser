@@ -29,6 +29,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,12 +53,15 @@ import com.spendlens.ui.dashboard.DashboardScreen
 import com.spendlens.ui.dashboard.DashboardViewModel
 import com.spendlens.ui.entry.AddTransactionSheet
 import com.spendlens.ui.entry.ImportSheet
+import com.spendlens.ui.entry.MoreSheet
+import com.spendlens.ui.entry.sendFeedback
 import com.spendlens.ui.entry.SourceRecord
 import com.spendlens.ui.entry.SplitSheet
 import com.spendlens.ui.entry.TagSheet
 import com.spendlens.ui.entry.TransactionDetail
 import com.spendlens.ui.entry.TransactionDetailSheet
 import com.spendlens.ui.theme.SpendLensTheme
+import com.spendlens.ui.theme.LocalCurrency
 import com.spendlens.ui.theme.SpendTheme
 
 private enum class Tab { STREAM, DASHBOARD }
@@ -91,6 +95,18 @@ class MainActivity : ComponentActivity() {
             uri?.let(viewModel::importCsv)
         }
 
+    /**
+     * Set just before the picker opens, because the choice cannot ride along with
+     * a CreateDocument contract and the activity may be recreated while the
+     * picker is in front of it.
+     */
+    private var exportIncludesSources = false
+
+    private val createExportFile =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri: Uri? ->
+            uri?.let { viewModel.exportTo(it, exportIncludesSources) }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -102,6 +118,9 @@ class MainActivity : ComponentActivity() {
             SpendLensTheme {
                 val state by viewModel.state.collectAsState()
                 val dashboard by dashboardViewModel.state.collectAsState()
+                // Collected so a currency change redraws every amount on screen.
+                val currency by viewModel.currency.collectAsState()
+                val exporting by viewModel.exporting.collectAsState()
                 val snackbarHostState = remember { SnackbarHostState() }
                 val context = LocalContext.current
 
@@ -110,6 +129,7 @@ class MainActivity : ComponentActivity() {
                 var showImportSheet by remember { mutableStateOf(false) }
                 var showSplitSheet by remember { mutableStateOf(false) }
                 var showTagSheet by remember { mutableStateOf(false) }
+                var showMoreSheet by remember { mutableStateOf(false) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
                 var openSources by remember { mutableStateOf<List<SourceRecord>>(emptyList()) }
@@ -132,6 +152,7 @@ class MainActivity : ComponentActivity() {
                     openSources = openTxnId?.let { viewModel.sourcesFor(it) }.orEmpty()
                 }
 
+                CompositionLocalProvider(LocalCurrency provides currency) {
                 Scaffold(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     containerColor = SpendTheme.colors.paper,
@@ -161,7 +182,8 @@ class MainActivity : ComponentActivity() {
                                 onToggleDaySelect = viewModel::toggleDaySelection,
                                 onToggleDayExpanded = viewModel::toggleDay,
                                 onAdd = { showAddSheet = true },
-                                onImport = { showImportSheet = true }
+                                onImport = { showImportSheet = true },
+                                onMore = { showMoreSheet = true }
                             ),
                             modifier = Modifier
                                 .fillMaxSize()
@@ -257,6 +279,29 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                } // CompositionLocalProvider
+
+                if (showMoreSheet) {
+                    MoreSheet(
+                        currency = currency,
+                        exporting = exporting,
+                        onDismiss = { showMoreSheet = false },
+                        onCurrency = {
+                            viewModel.setCurrency(it)
+                            dashboardViewModel.refresh()
+                        },
+                        onExport = { includeSources ->
+                            exportIncludesSources = includeSources
+                            showMoreSheet = false
+                            createExportFile.launch(exportFileName())
+                        },
+                        onFeedback = {
+                            showMoreSheet = false
+                            if (!hasEmailApp()) viewModel.reportNoEmailApp() else sendFeedback(this)
+                        }
+                    )
+                }
+
                 if (showAddSheet) {
                     AddTransactionSheet(
                         onDismiss = { showAddSheet = false },
@@ -317,6 +362,20 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /**
+     * Checked before firing the intent so a phone with no mail client gets an
+     * explanation rather than nothing happening at all.
+     */
+    private fun hasEmailApp(): Boolean {
+        val probe = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
+        return probe.resolveActivity(packageManager) != null
+    }
+
+    private fun exportFileName(): String {
+        val stamp = java.time.LocalDate.now().toString()
+        return "spendlens-$stamp.csv"
     }
 
     private fun isNotificationListenerEnabled(): Boolean =
@@ -390,6 +449,8 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.SmsUnavailable -> getString(R.string.import_sms_unavailable)
     is DayStreamEvent.SplitApplied -> getString(R.string.split_applied, event.count)
     is DayStreamEvent.Tagged -> getString(R.string.tagged_result, event.count, event.tagName)
+    is DayStreamEvent.Exported -> getString(R.string.export_done, event.rowCount)
+    DayStreamEvent.NoEmailApp -> getString(R.string.settings_no_email_app)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

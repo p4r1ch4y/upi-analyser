@@ -35,6 +35,11 @@ class TransactionRepository(
     fun transactionsSince(since: Long): Flow<List<Transactions>> =
         queries.selectTransactionsSince(since).asFlow().mapToList(io)
 
+    /** One-shot equivalent, for the exporter — a flow would never complete. */
+    suspend fun transactionsSinceOnce(since: Long): List<Transactions> = withContext(io) {
+        queries.selectTransactionsSince(since).executeAsList()
+    }
+
     fun dayStats(dayStart: Long, dayEnd: Long): Flow<SelectDayStats?> =
         queries.selectDayStats(dayStart, dayEnd).asFlow().mapToOneOrNull(io)
 

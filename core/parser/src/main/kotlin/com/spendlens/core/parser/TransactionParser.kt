@@ -393,6 +393,20 @@ object BuiltInTemplates {
         direction = Direction.DEBIT
     )
 
+    /**
+     * `Rs. 100.00 has been debited from your account towards Google Play.`
+     *
+     * Standing-instruction and autopay debits phrase the payee with "towards"
+     * rather than "to". Without this the catch-all caught the amount but not the
+     * name, and the row read "Payment" while the message plainly said who it went
+     * to - which is exactly the gap the Source section made visible.
+     */
+    val debitTowards = upi(
+        id = "upi.debit.towards.v1",
+        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited\s+(?:from\s+your\s+account\s+)?towards\s+$NAME_GROUP(?:\s*[(·|.\n]|$)""",
+        direction = Direction.DEBIT
+    )
+
     /** `Payment of ₹80 to Chai stall is successful` */
     val debitPaymentOf = upi(
         id = "upi.debit.payment-of.v1",
@@ -707,6 +721,7 @@ object BuiltInTemplates {
         debitToVpa,
         creditFromVpa,
         // Consumer app phrasings.
+        debitTowards,
         debitPaymentOf,
         debitPaidTo,
         debitAmountFirst,

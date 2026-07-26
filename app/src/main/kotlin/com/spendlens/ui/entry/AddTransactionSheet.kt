@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.spendlens.R
 import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
+import com.spendlens.core.model.MoneyFormat
 import com.spendlens.ui.theme.SpendTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -159,7 +160,7 @@ fun AddTransactionSheet(
                 value = amountText,
                 onValueChange = { amountText = it.filter { char -> char.isDigit() || char == '.' } },
                 label = { Text(stringResource(R.string.field_amount)) },
-                prefix = { Text("₹") },
+                prefix = { Text(MoneyFormat.symbolFor(MoneyFormat.displayCurrency).trim()) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
@@ -422,6 +423,7 @@ private fun ImportOption(title: String, subtitle: String, onClick: () -> Unit) {
 fun EntryActions(
     onAdd: () -> Unit,
     onImport: () -> Unit,
+    onMore: () -> Unit,
     modifier: Modifier = Modifier,
     busy: Boolean = false
 ) {
@@ -440,6 +442,7 @@ fun EntryActions(
             onClick = onImport,
             enabled = !busy
         )
+        ActionPill(text = stringResource(R.string.action_more), onClick = onMore)
     }
 }
 

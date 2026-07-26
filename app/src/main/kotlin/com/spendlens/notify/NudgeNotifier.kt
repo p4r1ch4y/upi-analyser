@@ -22,8 +22,8 @@ class NudgeNotifier(private val context: Context) {
     fun notifyPayment(displayName: String, amountMinor: Long, dayTotalMinor: Long) {
         if (!canPostNotifications()) return
 
-        val amount = MoneyFormat.rupees(amountMinor)
-        val dayTotal = MoneyFormat.rupees(dayTotalMinor)
+        val amount = MoneyFormat.money(amountMinor)
+        val dayTotal = MoneyFormat.money(dayTotalMinor)
 
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
         val contentIntent = PendingIntent.getActivity(

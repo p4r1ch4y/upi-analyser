@@ -151,4 +151,22 @@
     <string name="source_statement">Statement</string>
     <string name="source_manual">Typed in by you</string>
     <string name="source_matched_by">Matched by %1$s</string>
+
+    <!-- Settings / More -->
+    <string name="action_more">More</string>
+    <string name="settings_currency">Currency</string>
+    <string name="settings_currency_note">Changes how amounts are shown. Payments keep the currency they were captured in, so nothing already recorded is reinterpreted.</string>
+    <string name="settings_export">Export your data</string>
+    <string name="settings_export_note">Writes every payment to a CSV file you choose. This is the only way data leaves SpendLens — there is no backup yet, so keep one somewhere safe.</string>
+    <string name="settings_export_sources">Include original messages</string>
+    <string name="settings_export_sources_note">Adds the notification and SMS text, which contains account numbers and payee names.</string>
+    <string name="settings_export_action">Choose a file and export →</string>
+    <string name="settings_exporting">Exporting…</string>
+    <string name="export_done">Exported %1$d payments</string>
+    <string name="export_failed">Export failed. %1$s</string>
+    <string name="settings_feedback">Contact the developer</string>
+    <string name="settings_feedback_note">SpendLens has no internet access, so this opens your email app. Nothing is sent until you send it.</string>
+    <string name="settings_feedback_action">Write an email →</string>
+    <string name="settings_no_email_app">No email app is set up on this phone</string>
+    <string name="settings_version">SpendLens %1$s · %2$s build</string>
 </resources>

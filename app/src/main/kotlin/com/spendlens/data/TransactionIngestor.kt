@@ -202,7 +202,7 @@ class TransactionIngestor(
                 bodyHash = "",
                 sourceBody = buildString {
                     append(if (direction == Direction.DEBIT) "Spent " else "Received ")
-                    append(Money(amountMinor, currency).let { MoneyFormat.rupees(it.amountMinor) })
+                    append(Money(amountMinor, currency).let { MoneyFormat.money(it.amountMinor) })
                     append(if (direction == Direction.DEBIT) " to " else " from ")
                     append(displayName)
                     channel?.let { append(" · ").append(it.name) }

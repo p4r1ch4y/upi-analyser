@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.spendlens.core.model.MoneyFormat
 import com.spendlens.ui.theme.SpendTheme
+import com.spendlens.ui.theme.money
 
 /**
  * The chart vocabulary for the dashboard.
@@ -85,7 +86,7 @@ fun RankedBars(
                     // 3:1 against the surface on purpose, and a visible value is
                     // what makes that legal rather than merely quiet.
                     Text(
-                        text = MoneyFormat.rupees(row.valueMinor),
+                        text = money(row.valueMinor),
                         style = typography.bodySmall,
                         color = colors.ink
                     )
@@ -100,15 +101,15 @@ fun RankedBars(
                     )
                 }
 
+                val barDescription = "${row.label}: ${money(row.valueMinor)}" +
+                    (row.share?.let { ", ${(it * 100).toInt()} percent of the total" } ?: "")
+
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 5.dp)) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(BAR_THICKNESS)
-                        .semantics {
-                            contentDescription = "${row.label}: ${MoneyFormat.rupees(row.valueMinor)}" +
-                                (row.share?.let { ", ${(it * 100).toInt()} percent of the total" } ?: "")
-                        }
+                        .semantics { contentDescription = barDescription }
                 ) {
                     // Track first, so a near-zero bar still reads as "a row that
                     // exists and is nearly nothing" rather than as missing data.
@@ -177,16 +178,14 @@ fun SpendColumns(
     if (values.isEmpty()) return
 
     val peak = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
-    val total = values.sum()
+    val columnsDescription =
+        "Daily spending over ${values.size} days, total ${money(values.sum())}"
 
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
-            .semantics {
-                contentDescription =
-                    "Daily spending over ${values.size} days, total ${MoneyFormat.rupees(total)}"
-            }
+            .semantics { contentDescription = columnsDescription }
     ) {
         val gap = COLUMN_GAP_PX
         val slot = size.width / values.size

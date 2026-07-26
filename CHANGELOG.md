@@ -11,7 +11,25 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Source messages.** Every payment keeps the notification or SMS it was read
+  out of, shown under *Source* when the row is opened. A payment caught on two
+  rails shows both.
+- **Export to CSV** through the file picker, with original messages opt-in.
+- **Contact the developer**, which opens the mail client with a build report.
+- **Configurable currency** — a display setting; stored payments keep the
+  currency they were captured in.
+- Report filters: expense or income, four ranges, grouping by merchant, tag or
+  payment type, sorting by amount, count or name, share-of-total on every bar,
+  and a balance card.
+
+### Fixed
+
+- Standing-instruction debits (`… debited from your account towards Google Play`)
+  now name the payee instead of falling to the catch-all and reading "Payment".
+- Changing currency did not redraw anything: the formatter was a global, which
+  Compose cannot observe. Amounts now read it through a CompositionLocal.
 
 ## [0.1.1-alpha] — 2026-07-26
 

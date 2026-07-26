@@ -76,7 +76,7 @@ class TransactionCaptureService : Service() {
             .setContentText(
                 getString(
                     R.string.service_notification_text,
-                    MoneyFormat.rupees(todayTotalMinor)
+                    MoneyFormat.money(todayTotalMinor)
                 )
             )
             .setSmallIcon(R.drawable.ic_notification)

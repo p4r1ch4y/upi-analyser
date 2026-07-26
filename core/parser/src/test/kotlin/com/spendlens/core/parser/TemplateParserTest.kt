@@ -113,6 +113,26 @@ class TemplateParserTest {
         assertEquals("Chai stall", txn.counterpartyNameRaw)
     }
 
+    /**
+     * Caught on a real device: the message named the payee, the row said
+     * "Payment", and the Source section showed why - only the catch-all matched.
+     */
+    @Test
+    fun `a standing-instruction debit names the payee it says it paid`() {
+        val txn = parser.parse(
+            notification(
+                "in.org.npci.upiapp",
+                "BHIM",
+                "Rs. 100.00 has been debited from your account towards Google Play. " +
+                    "Please check SI history for further details."
+            )
+        )
+        assertNotNull(txn)
+        assertEquals(10_000L, txn!!.amountMinor)
+        assertEquals(Direction.DEBIT, txn.direction)
+        assertEquals("Google Play", txn.counterpartyNameRaw)
+    }
+
     @Test
     fun `paying a bare vpa keeps it as the vpa, not as a name`() {
         val txn = parser.parse(notification("com.phonepe.app", "PhonePe", "₹80 paid to 9822014455@ybl"))

@@ -1,6 +1,6 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 102 unit tests pass, lint is clean, and the app
+Alpha. Both flavours build, all 110 unit tests pass, lint is clean, and the app
 captures, stores and displays real payments end to end — verified on a physical
 device, not just in the test suite.
 
@@ -100,6 +100,15 @@ palette, no legends, no pie charts.
 **Manual entry** — amount, counterparty, direction, payment type, editable date
 and time.
 
+**More** — currency, export, and contacting the developer. Currency is a display
+setting only: every payment keeps the currency it was captured in, so switching
+never reinterprets an old amount. Export writes the whole ledger to a CSV file
+the user picks, with the original messages left out unless they opt in — an
+export gets mailed to accountants and dropped in cloud folders, and those lines
+carry account numbers and payee names. Feedback opens the mail client with a
+build report and nothing about the ledger; in an app with no network permission,
+other apps are the only way to reach the outside world.
+
 ### Privacy posture
 
 Verifiable on the artifact, not just claimed:
@@ -182,4 +191,4 @@ Verifiable on the artifact, not just claimed:
   no longer falls back to the debug key, but no key has been created yet, so
   release builds come out unsigned.
 - GitLab mirror, and screenshots for the F-Droid listing. See `fdroid/README.md`.
-- Instrumented tests. All 102 tests are JVM-only.
+- Instrumented tests. All 110 tests are JVM-only.

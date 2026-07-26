@@ -38,6 +38,7 @@ import com.spendlens.ui.components.TapBarItem
 import com.spendlens.ui.components.TransactionRow
 import com.spendlens.ui.entry.EntryActions
 import com.spendlens.ui.theme.SpendTheme
+import com.spendlens.ui.theme.money
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -55,7 +56,8 @@ data class DayStreamActions(
     val onToggleDaySelect: (LocalDate) -> Unit = {},
     val onToggleDayExpanded: (LocalDate) -> Unit = {},
     val onAdd: () -> Unit = {},
-    val onImport: () -> Unit = {}
+    val onImport: () -> Unit = {},
+    val onMore: () -> Unit = {}
 )
 
 /**
@@ -88,7 +90,12 @@ fun DayStreamScreen(
         }
 
         item {
-            EntryActions(onAdd = actions.onAdd, onImport = actions.onImport, busy = state.importing)
+            EntryActions(
+                onAdd = actions.onAdd,
+                onImport = actions.onImport,
+                onMore = actions.onMore,
+                busy = state.importing
+            )
         }
 
         item {
@@ -117,7 +124,7 @@ fun DayStreamScreen(
                 }
 
                 Text(
-                    text = MoneyFormat.rupees(today?.spentMinor ?: 0L),
+                    text = money(today?.spentMinor ?: 0L),
                     style = typography.displayLarge,
                     color = colors.ink
                 )
@@ -207,7 +214,7 @@ private fun TripBar(trip: TripBanner, modifier: Modifier = Modifier) {
             )
         }
         Text(
-            text = MoneyFormat.rupees(trip.spentMinor),
+            text = money(trip.spentMinor),
             style = typography.bodySmall,
             color = colors.paper
         )
@@ -264,7 +271,7 @@ private fun CollapsibleDay(
                     )
                 }
                 Text(
-                    text = MoneyFormat.rupees(day.spentMinor),
+                    text = money(day.spentMinor),
                     style = typography.displaySmall,
                     color = colors.ink
                 )
@@ -361,7 +368,7 @@ private fun StreamRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = stringResource(R.string.split_paid, MoneyFormat.rupees(split.totalMinor)),
+                    text = stringResource(R.string.split_paid, money(split.totalMinor)),
                     style = typography.bodySmall,
                     color = colors.split
                 )
@@ -450,7 +457,7 @@ fun SelectionBar(
                 color = colors.paper
             )
             Text(
-                text = MoneyFormat.rupees(totalMinor),
+                text = money(totalMinor),
                 style = typography.bodySmall,
                 color = colors.mist
             )
@@ -487,7 +494,6 @@ private fun Long.asLocalTime(zone: ZoneId = ZoneId.systemDefault()): String =
     Instant.ofEpochMilli(this).atZone(zone).toLocalTime().format(TIME_FORMAT)
 
 /** Credits read as money coming in; a split reads as the user's own share. */
-private fun TxnUi.amountLabel(): String {
-    val prefix = if (isCredit) "+" else ""
-    return prefix + MoneyFormat.rupees(effectiveMinor)
-}
+@Composable
+private fun TxnUi.amountLabel(): String =
+    (if (isCredit) "+" else "") + money(effectiveMinor)

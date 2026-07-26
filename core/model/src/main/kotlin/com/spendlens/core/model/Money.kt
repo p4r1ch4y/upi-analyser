@@ -96,7 +96,71 @@ object MoneyFormat {
 
     val INDIA: java.util.Locale = java.util.Locale.forLanguageTag("en-IN")
 
-    /** `₹` + [groupIndian] of the major units, plus paise only when non-zero. */
+    /**
+     * The currency the UI formats in, set by the user.
+     *
+     * Deliberately a display concern only. Every stored transaction keeps the
+     * currency it was actually parsed with - the parser refuses to guess one -
+     * so changing this never rewrites history or reinterprets an old amount. It
+     * decides the symbol and grouping shown, and the default for a manual entry.
+     */
+    @Volatile
+    var displayCurrency: String = "INR"
+        set(value) {
+            field = if (value.matches(Regex("[A-Z]{3}"))) value else "INR"
+        }
+
+    /** Symbols people expect. Anything unlisted falls back to its ISO code. */
+    private val SYMBOLS = mapOf(
+        "INR" to "₹", "USD" to "$", "EUR" to "€", "GBP" to "£", "JPY" to "¥",
+        "AUD" to "A$", "CAD" to "C$", "SGD" to "S$", "AED" to "AED ",
+        "CHF" to "CHF ", "CNY" to "¥", "NZD" to "NZ$", "ZAR" to "R",
+        "LKR" to "Rs ", "NPR" to "Rs ", "BDT" to "৳", "PKR" to "Rs ",
+        "MYR" to "RM", "THB" to "฿", "IDR" to "Rp", "PHP" to "₱",
+        "SAR" to "SAR ", "QAR" to "QAR ", "KWD" to "KWD ", "OMR" to "OMR "
+    )
+
+    /** Currencies whose smallest unit is the whole unit — no decimal part. */
+    private val ZERO_DECIMAL = setOf("JPY", "KRW", "VND", "IDR", "CLP", "ISK")
+
+    fun symbolFor(code: String): String = SYMBOLS[code] ?: "$code "
+
+    /**
+     * Formats in [displayCurrency] unless a specific one is given.
+     *
+     * Grouping follows the currency, not the device locale: rupees are grouped
+     * in lakhs and crores (18,40,000) and everything else in thousands
+     * (1,840,000). Getting that wrong is immediately obvious to the reader and
+     * makes the whole app feel foreign.
+     */
+    fun money(amountMinor: Long, currency: String = displayCurrency): String {
+        val symbol = symbolFor(currency)
+        if (currency in ZERO_DECIMAL) {
+            val whole = amountMinor / 100
+            return symbol + groupFor(currency, whole)
+        }
+        val major = amountMinor / 100
+        val minor = amountMinor % 100
+        val fraction = if (minor > 0) ".${minor.toString().padStart(2, '0')}" else ""
+        return "$symbol${groupFor(currency, major)}$fraction"
+    }
+
+    private fun groupFor(currency: String, value: Long): String =
+        if (currency == "INR") groupIndian(value) else groupWestern(value)
+
+    /** 1840000 -> "1,840,000". */
+    fun groupWestern(value: Long): String {
+        val digits = value.toString()
+        if (digits.length <= 3) return digits
+        return digits.reversed().chunked(3).joinToString(",").reversed()
+    }
+
+    /**
+     * `₹` + [groupIndian] of the major units, plus paise only when non-zero.
+     *
+     * Kept because it is what the parser tests assert against, but the UI should
+     * call [money] so the user's chosen currency is honoured.
+     */
     fun rupees(amountMinor: Long): String {
         val major = amountMinor / 100
         val paise = amountMinor % 100

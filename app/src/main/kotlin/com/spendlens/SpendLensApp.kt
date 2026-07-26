@@ -13,6 +13,8 @@ import com.spendlens.data.CsvStatementImporter
 import com.spendlens.data.DatabasePassphrase
 import com.spendlens.data.Days
 import com.spendlens.data.SmsInboxImporter
+import com.spendlens.data.CsvExporter
+import com.spendlens.data.SettingsStore
 import com.spendlens.data.SplitAndTagRepository
 import com.spendlens.data.TransactionIngestor
 import com.spendlens.data.TransactionRepository
@@ -37,6 +39,10 @@ class SpendLensApp : Application() {
         super.onCreate()
 
         createNotificationChannels()
+
+        // Before any UI reads a number: the formatter is a global, and starting
+        // in rupees then flipping would show the wrong symbol for a frame.
+        graph.settings.applyToFormatter()
 
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             // Dedupe hashes only guard against replays; older ones are dead weight.
@@ -102,6 +108,10 @@ class SpendLensApp : Application() {
 
         /** Splits, tags and the dashboard aggregates. */
         val annotations: SplitAndTagRepository by lazy { SplitAndTagRepository(database) }
+
+        val settings: SettingsStore by lazy { SettingsStore(context) }
+
+        val csvExporter: CsvExporter by lazy { CsvExporter(context, repository, annotations) }
 
         suspend fun todayTotalMinor(): Long {
             val start = Days.startOfToday()

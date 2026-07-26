@@ -43,6 +43,7 @@ import com.spendlens.core.model.Split
 import com.spendlens.data.TagRef
 import com.spendlens.ui.TagChip
 import com.spendlens.ui.theme.SpendTheme
+import com.spendlens.ui.theme.money
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -136,7 +137,7 @@ fun TransactionDetailSheet(
                 )
             } else {
                 Text(
-                    text = (if (detail.isCredit) "+" else "") + MoneyFormat.rupees(detail.amountMinor),
+                    text = (if (detail.isCredit) "+" else "") + money(detail.amountMinor),
                     style = typography.displayMedium,
                     color = if (detail.isCredit) colors.credit else colors.ink,
                     modifier = Modifier.padding(top = 12.dp)
@@ -326,7 +327,7 @@ private fun SplitSummaryBox(split: Split, modifier: Modifier = Modifier) {
         ) {
             Text(stringResource(R.string.you_paid), style = typography.bodySmall, color = colors.graphite)
             Text(
-                MoneyFormat.rupees(split.totalMinor),
+                money(split.totalMinor),
                 style = typography.bodyMedium,
                 color = colors.graphite
             )
@@ -340,7 +341,7 @@ private fun SplitSummaryBox(split: Split, modifier: Modifier = Modifier) {
         ) {
             Text(stringResource(R.string.your_share), style = typography.bodySmall, color = colors.ink)
             Text(
-                MoneyFormat.rupees(split.myShareMinor),
+                money(split.myShareMinor),
                 style = typography.displaySmall,
                 color = colors.ink
             )
@@ -395,7 +396,7 @@ private fun ParticipantList(
                 // Settled shares are struck through rather than removed, so the
                 // split still shows what it was, not just what is left.
                 Text(
-                    text = MoneyFormat.rupees(share.amountMinor),
+                    text = money(share.amountMinor),
                     style = typography.bodySmall,
                     color = if (share.isSettled) colors.mist else colors.ink,
                     textDecoration = if (share.isSettled) TextDecoration.LineThrough else null
@@ -414,7 +415,7 @@ private fun ParticipantList(
             ) {
                 Text(stringResource(R.string.owed_to_you), style = typography.bodySmall, color = colors.split)
                 Text(
-                    MoneyFormat.rupees(split.owedToMeMinor),
+                    money(split.owedToMeMinor),
                     style = typography.bodySmall,
                     color = colors.split
                 )
@@ -471,7 +472,7 @@ fun SplitSheet(
                 color = colors.ink
             )
             Text(
-                text = stringResource(R.string.split_total, MoneyFormat.rupees(totalMinor)),
+                text = stringResource(R.string.split_total, money(totalMinor)),
                 style = typography.bodySmall,
                 color = colors.graphite
             )
@@ -505,7 +506,7 @@ fun SplitSheet(
                 text = stringResource(
                     R.string.split_preview,
                     effectiveWays,
-                    MoneyFormat.rupees(Split.evenly(totalMinor, parsedNames).myShareMinor)
+                    money(Split.evenly(totalMinor, parsedNames).myShareMinor)
                 ),
                 style = typography.bodySmall,
                 color = colors.split

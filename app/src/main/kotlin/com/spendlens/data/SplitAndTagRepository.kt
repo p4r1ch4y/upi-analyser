@@ -177,6 +177,12 @@ class SplitAndTagRepository(
             rows.groupBy({ it.txn_id }) { TagRef(it.id, it.name, it.kind == TAG_KIND_TRIP) }
         }
 
+    /** One-shot equivalent of [tagLinksSince], for the exporter. */
+    suspend fun tagLinksOnce(since: Long): Map<String, List<TagRef>> = withContext(io) {
+        queries.selectTagLinksSince(since).executeAsList()
+            .groupBy({ it.txn_id }) { TagRef(it.id, it.name, it.kind == TAG_KIND_TRIP) }
+    }
+
     suspend fun tagsFor(txnId: String): List<TagRef> = withContext(io) {
         queries.selectTagsForTxn(txnId).executeAsList().map { it.toRef() }
     }

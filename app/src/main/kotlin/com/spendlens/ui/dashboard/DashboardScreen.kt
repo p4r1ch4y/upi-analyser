@@ -32,6 +32,7 @@ import com.spendlens.ui.charts.RankedBars
 import com.spendlens.ui.charts.SpendColumns
 import com.spendlens.ui.charts.StatTile
 import com.spendlens.ui.theme.SpendTheme
+import com.spendlens.ui.theme.money
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -108,7 +109,7 @@ fun DashboardScreen(
 
         // ------------------------------------------------------------ headline
         Text(
-            text = MoneyFormat.rupees(state.headlineMinor),
+            text = money(state.headlineMinor),
             style = typography.displayLarge,
             color = if (state.direction == SpendDirection.INCOME) colors.credit else colors.ink,
             modifier = Modifier.padding(top = 20.dp)
@@ -138,12 +139,12 @@ fun DashboardScreen(
             horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             StatTile(
-                value = MoneyFormat.rupees(state.dailyAverageMinor),
+                value = money(state.dailyAverageMinor),
                 caption = stringResource(R.string.dash_daily_average)
             )
             state.busiestDay?.let { busiest ->
                 StatTile(
-                    value = MoneyFormat.rupees(busiest.spentMinor),
+                    value = money(busiest.spentMinor),
                     caption = stringResource(R.string.dash_busiest_day) +
                         " · " + busiest.date.format(DAY_FORMAT)
                 )
@@ -261,13 +262,13 @@ private fun BalanceCard(state: DashboardUiState, modifier: Modifier = Modifier) 
     ) {
         BalanceRow(
             label = stringResource(R.string.dash_income),
-            amount = MoneyFormat.rupees(state.totalReceivedMinor),
+            amount = money(state.totalReceivedMinor),
             sign = "+",
             signColor = colors.credit
         )
         BalanceRow(
             label = stringResource(R.string.dash_expense),
-            amount = MoneyFormat.rupees(state.totalSpentMinor),
+            amount = money(state.totalSpentMinor),
             sign = "−",
             signColor = colors.review,
             topRule = true
@@ -286,7 +287,7 @@ private fun BalanceCard(state: DashboardUiState, modifier: Modifier = Modifier) 
                 color = colors.ink
             )
             Text(
-                text = MoneyFormat.rupees(kotlin.math.abs(net)),
+                text = money(kotlin.math.abs(net)),
                 style = typography.displaySmall,
                 color = if (net >= 0) colors.ink else colors.credit
             )

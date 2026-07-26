@@ -13,6 +13,8 @@ import com.spendlens.data.CsvStatementImporter
 import com.spendlens.data.Days
 import com.spendlens.data.SmsInboxImporter
 import com.spendlens.data.SplitAndTagRepository
+import com.spendlens.data.CsvExporter
+import com.spendlens.data.SettingsStore
 import com.spendlens.data.SplitSummary
 import com.spendlens.data.TagRef
 import com.spendlens.data.TransactionIngestor
@@ -24,6 +26,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -108,6 +111,8 @@ data class DayStreamUiState(
 
 /** One-shot feedback. Typed rather than pre-formatted so the UI owns the wording. */
 sealed interface DayStreamEvent {
+    data class Exported(val rowCount: Int) : DayStreamEvent
+    data object NoEmailApp : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
     data object ListenerNotConnected : DayStreamEvent
@@ -123,8 +128,44 @@ class DayStreamViewModel(
     private val smsImporter: SmsInboxImporter,
     private val csvImporter: CsvStatementImporter,
     private val annotations: SplitAndTagRepository,
+    private val settings: SettingsStore,
+    private val exporter: CsvExporter,
     private val zone: ZoneId = ZoneId.systemDefault()
 ) : ViewModel() {
+
+    /**
+     * Held as state, not read straight off the formatter, because changing a
+     * global does not recompose anything. Writing it here is what redraws every
+     * amount on screen.
+     */
+    private val _currency = MutableStateFlow(settings.currency)
+    val currency: StateFlow<String> = _currency.asStateFlow()
+
+    private val _exporting = MutableStateFlow(false)
+    val exporting: StateFlow<Boolean> = _exporting.asStateFlow()
+
+    fun reportNoEmailApp() {
+        viewModelScope.launch { _events.send(DayStreamEvent.NoEmailApp) }
+    }
+
+    fun setCurrency(code: String) {
+        settings.currency = code   // also updates MoneyFormat
+        _currency.value = code
+    }
+
+    /** Writes the ledger to a file the user picked through the system picker. */
+    fun exportTo(uri: Uri, includeSourceMessages: Boolean) {
+        if (_exporting.value) return
+        viewModelScope.launch {
+            _exporting.value = true
+            runCatching { exporter.export(uri, includeSourceMessages = includeSourceMessages) }
+                .fold(
+                    onSuccess = { _events.send(DayStreamEvent.Exported(it.rowCount)) },
+                    onFailure = { _events.send(DayStreamEvent.Failed(it.message)) }
+                )
+            _exporting.value = false
+        }
+    }
 
     private val importing = MutableStateFlow(false)
     private val expanded = MutableStateFlow<Set<LocalDate>>(emptySet())
@@ -449,7 +490,9 @@ class DayStreamViewModel(
                         ingestor = graph.ingestor,
                         smsImporter = graph.smsImporter,
                         csvImporter = graph.csvImporter,
-                        annotations = graph.annotations
+                        annotations = graph.annotations,
+                        settings = graph.settings,
+                        exporter = graph.csvExporter
                     ) as T
             }
     }
