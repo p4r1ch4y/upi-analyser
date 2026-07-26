@@ -4,21 +4,30 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,11 +38,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.spendlens.R
+import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
 import com.spendlens.ui.theme.SpendTheme
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+/** What the user typed. Grouped so the sheet has one submit callback, not six. */
+data class ManualEntry(
+    val amountMinor: Long,
+    val displayName: String,
+    val direction: Direction,
+    val channel: Channel,
+    val occurredAt: Long,
+    val note: String?
+)
+
+private val DATE_LABEL = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH)
+private val TIME_LABEL = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
+
+/**
+ * Payment types offered for manual entry.
+ *
+ * These are the [Channel] values a person can actually distinguish about their own
+ * spending. `UNKNOWN` is deliberately absent - the automated rails use it when a
+ * message does not say, but someone typing an entry in always knows how they paid,
+ * and offering "Unknown" only invites a shrug that makes the row less useful later.
+ */
+private val PAYMENT_TYPES = listOf(
+    Channel.UPI to R.string.channel_upi,
+    Channel.CASH to R.string.channel_cash,
+    Channel.CARD to R.string.channel_card,
+    Channel.ATM to R.string.channel_atm,
+    Channel.NEFT to R.string.channel_bank_transfer
+)
 
 /**
  * Manual entry.
@@ -41,12 +88,18 @@ import java.math.RoundingMode
  * Cash exists, and so does every payment rail this app cannot see. Without a way
  * to type one in, the day total is quietly wrong and the user has no way to fix
  * it - which undermines the one number the whole screen is built around.
+ *
+ * Date and time are editable because the common case for typing an entry is
+ * remembering a payment *later* - the ₹20 chai from this morning, yesterday's
+ * cash auto fare. Defaulting to now and forcing it would file those on the wrong
+ * day and quietly corrupt every daily total.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionSheet(
     onDismiss: () -> Unit,
-    onSubmit: (amountMinor: Long, name: String, direction: Direction, note: String?) -> Unit
+    onSubmit: (ManualEntry) -> Unit,
+    zone: ZoneId = ZoneId.systemDefault()
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
@@ -56,6 +109,14 @@ fun AddTransactionSheet(
     var name by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var direction by remember { mutableStateOf(Direction.DEBIT) }
+    var channel by remember { mutableStateOf(Channel.UPI) }
+
+    val nowLocal = remember { LocalDateTime.now(zone) }
+    var date by remember { mutableStateOf(nowLocal.toLocalDate()) }
+    var time by remember { mutableStateOf(nowLocal.toLocalTime().withSecond(0).withNano(0)) }
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
 
     val amountMinor = remember(amountText) { parseAmountMinor(amountText) }
     val canSubmit = amountMinor != null && amountMinor > 0 && name.isNotBlank()
@@ -68,6 +129,7 @@ fun AddTransactionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp)
                 .padding(bottom = 24.dp)
                 .imePadding()
@@ -81,12 +143,12 @@ fun AddTransactionSheet(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DirectionChip(
+                Chip(
                     label = stringResource(R.string.direction_spent),
                     selected = direction == Direction.DEBIT,
                     onClick = { direction = Direction.DEBIT }
                 )
-                DirectionChip(
+                Chip(
                     label = stringResource(R.string.direction_received),
                     selected = direction == Direction.CREDIT,
                     onClick = { direction = Direction.CREDIT }
@@ -111,6 +173,34 @@ fun AddTransactionSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            FieldLabel(stringResource(R.string.field_payment_type))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((value, label) in PAYMENT_TYPES) {
+                    Chip(
+                        label = stringResource(label),
+                        selected = channel == value,
+                        onClick = { channel = value }
+                    )
+                }
+            }
+
+            FieldLabel(stringResource(R.string.field_when))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Chip(
+                    label = date.format(DATE_LABEL),
+                    selected = false,
+                    onClick = { showDatePicker = true }
+                )
+                Chip(
+                    label = time.format(TIME_LABEL),
+                    selected = false,
+                    onClick = { showTimePicker = true }
+                )
+            }
+
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
@@ -120,7 +210,19 @@ fun AddTransactionSheet(
             )
 
             Button(
-                onClick = { amountMinor?.let { onSubmit(it, name.trim(), direction, note.trim()) } },
+                onClick = {
+                    val occurredAt = date.atTime(time).atZone(zone).toInstant().toEpochMilli()
+                    onSubmit(
+                        ManualEntry(
+                            amountMinor = amountMinor ?: return@Button,
+                            displayName = name.trim(),
+                            direction = direction,
+                            channel = channel,
+                            occurredAt = occurredAt,
+                            note = note.trim().takeIf { it.isNotEmpty() }
+                        )
+                    )
+                },
                 enabled = canSubmit,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.ink,
@@ -132,15 +234,83 @@ fun AddTransactionSheet(
             }
         }
     }
+
+    if (showDatePicker) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = date.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            confirmButton = {
+                TextButton(onClick = {
+                    // The picker reports UTC midnight for the day the user tapped,
+                    // so it is read back in UTC. Converting through the local zone
+                    // would shift the date by one either side of midnight.
+                    state.selectedDateMillis?.let {
+                        date = Instant.ofEpochMilli(it).atZone(ZoneId.of("UTC")).toLocalDate()
+                    }
+                    showDatePicker = false
+                }) { Text(stringResource(R.string.action_done)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        ) {
+            DatePicker(state = state)
+        }
+    }
+
+    if (showTimePicker) {
+        val state = rememberTimePickerState(
+            initialHour = time.hour,
+            initialMinute = time.minute,
+            is24Hour = true
+        )
+        DatePickerDialog(
+            onDismissRequest = { showTimePicker = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+            confirmButton = {
+                TextButton(onClick = {
+                    time = LocalTime.of(state.hour, state.minute)
+                    showTimePicker = false
+                }) { Text(stringResource(R.string.action_done)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                TimePicker(state = state)
+            }
+        }
+    }
 }
 
 @Composable
-private fun DirectionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = SpendTheme.colors.graphite,
+        modifier = Modifier.padding(top = 2.dp)
+    )
+}
+
+@Composable
+private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = SpendTheme.colors
     Text(
         text = label,
         style = MaterialTheme.typography.bodySmall,
-        color = if (selected) colors.paper else colors.graphite,
+        color = if (selected) colors.paper else colors.ink,
         modifier = Modifier
             .background(
                 color = if (selected) colors.ink else colors.paperSunk,

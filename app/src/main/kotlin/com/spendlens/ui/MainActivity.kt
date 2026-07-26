@@ -123,14 +123,8 @@ class MainActivity : ComponentActivity() {
                 if (showAddSheet) {
                     AddTransactionSheet(
                         onDismiss = { showAddSheet = false },
-                        onSubmit = { amountMinor, name, direction, note ->
-                            viewModel.addManual(
-                                amountMinor = amountMinor,
-                                displayName = name,
-                                direction = direction,
-                                occurredAt = System.currentTimeMillis(),
-                                note = note
-                            )
+                        onSubmit = { entry ->
+                            viewModel.addManual(entry)
                             showAddSheet = false
                         }
                     )

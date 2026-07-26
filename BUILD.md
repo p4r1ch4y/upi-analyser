@@ -100,13 +100,32 @@ $ANDROID_HOME/build-tools/36.0.0/aapt2 dump badging \
 ./gradlew test
 ```
 
-56 unit tests across `core:model`, `core:parser`, `core:resolution` and
+79 unit tests across `core:model`, `core:parser`, `core:resolution` and
 `core:fusion`. They are plain JVM tests — no emulator, no Robolectric — because
 every parsing and resolution decision lives in Android-free modules.
 
-`TemplateParserTest` contains verbatim notification and SMS text captured from
-real devices. Those are regression tests in the strict sense: when one fails,
-real payments have stopped being recorded.
+`TemplateParserTest` and `BankSmsTest` carry notification and SMS text captured
+from real devices (anonymised in the SMS case). Those are regression tests in the
+strict sense: when one fails, real payments have stopped being recorded. Roughly
+half of `BankSmsTest` asserts the *opposite* — that failed payments, collect
+requests, mandate approvals, bill reminders and OTPs produce nothing — because a
+phantom transaction is worse than a missing one.
+
+### Measuring against your own SMS
+
+`CorpusHarness` runs the parser over a real SMS backup (the XML that apps like
+SMS Backup & Restore produce) and reports the match rate, a per-template
+breakdown, and every message it could not read, grouped by shape:
+
+```bash
+./gradlew :core:parser:test --tests '*CorpusHarness*' \
+  -Dspendlens.corpus=/path/to/sms-backup.xml --rerun-tasks
+```
+
+It skips silently without that property, so it never runs in CI and no personal
+data is ever needed — or committed — to build and test the project. The current
+reference corpus is 4,103 messages: 603 of 652 candidates captured, no closing
+balance misread as a payment amount.
 
 ## A note on history
 

@@ -1,5 +1,6 @@
 package com.spendlens.data
 
+import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.FusedTxn
 import com.spendlens.core.model.Money
@@ -7,6 +8,7 @@ import com.spendlens.core.model.RawTxn
 import com.spendlens.core.model.Source
 import com.spendlens.core.model.TxnId
 import com.spendlens.core.resolution.MerchantResolver
+import com.spendlens.core.resolution.VpaRule
 
 /**
  * The one path from "a rail produced a RawTxn" to "the ledger reflects it".
@@ -51,12 +53,17 @@ class TransactionIngestor(
         fun withFailure(): BatchSummary = copy(failed = failed + 1)
     }
 
-    suspend fun ingest(raw: RawTxn): Result {
+    /**
+     * @param rules pre-fetched user rules. A bulk import passes them in once
+     *   rather than re-reading them for every message, which on an encrypted
+     *   database is the difference between a few seconds and a few minutes.
+     */
+    suspend fun ingest(raw: RawTxn, rules: List<VpaRule>? = null): Result {
         val timestamp = now()
 
         if (repository.markSeen(raw.bodyHash, timestamp)) return Result.Duplicate
 
-        val resolution = resolver.resolve(raw, userRules = repository.userRules())
+        val resolution = resolver.resolve(raw, userRules = rules ?: repository.userRules())
 
         repository.findFusionTarget(raw, fusionWindowMillis)?.let { existing ->
             // Keep whichever label the ladder is more sure of. A bank SMS that
@@ -109,11 +116,21 @@ class TransactionIngestor(
      * happened. One bad row does not abort the batch: a backfill of six months of
      * SMS should not be lost to a single malformed message.
      */
-    suspend fun ingestAll(raws: List<RawTxn>): BatchSummary {
+    suspend fun ingestAll(
+        raws: List<RawTxn>,
+        onProgress: ((done: Int, total: Int) -> Unit)? = null
+    ): BatchSummary {
+        // Read once for the whole batch. Importing a few years of bank SMS is
+        // hundreds of transactions, and re-reading the rule table for each of
+        // them was the bulk of the wall-clock cost.
+        val rules = repository.userRules()
+
         var summary = BatchSummary()
-        for (raw in raws.sortedBy { it.occurredAt ?: it.observedAt }) {
-            summary = runCatching { ingest(raw) }
+        val ordered = raws.sortedBy { it.occurredAt ?: it.observedAt }
+        for ((index, raw) in ordered.withIndex()) {
+            summary = runCatching { ingest(raw, rules) }
                 .fold(onSuccess = { summary + it }, onFailure = { summary.withFailure() })
+            onProgress?.invoke(index + 1, ordered.size)
         }
         return summary
     }
@@ -132,6 +149,7 @@ class TransactionIngestor(
         direction: Direction,
         displayName: String,
         occurredAt: Long,
+        channel: Channel? = null,
         note: String? = null
     ): FusedTxn {
         val timestamp = now()
@@ -150,7 +168,7 @@ class TransactionIngestor(
             resolutionRung = 1,
             sourceMask = Source.MANUAL.toMask(),
             rrn = null,
-            channel = null,
+            channel = channel,
             instrument = null,
             flags = FusedTxn.FLAG_MANUAL_EDIT,
             linkedTxnId = null,

@@ -73,13 +73,20 @@ class SmsInboxImporter(
                     projection,
                     "${Telephony.Sms.DATE} >= ?",
                     arrayOf(since.toString()),
-                    "${Telephony.Sms.DATE} DESC LIMIT $limit"
+                    // Sort only. `LIMIT` appended to sortOrder is a SQLite
+                    // implementation detail that the SMS provider is free to
+                    // reject, and some OEM builds throw on it rather than
+                    // ignoring it - which failed the whole import. The cap is
+                    // applied while walking the cursor instead.
+                    "${Telephony.Sms.DATE} DESC"
                 )?.use { cursor ->
                     val addressColumn = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
                     val bodyColumn = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
                     val dateColumn = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
 
-                    while (cursor.moveToNext()) {
+                    var scanned = 0
+                    while (cursor.moveToNext() && scanned < limit) {
+                        scanned++
                         val body = cursor.getString(bodyColumn) ?: continue
                         val sender = cursor.getString(addressColumn) ?: continue
                         val sentAt = cursor.getLong(dateColumn)
@@ -93,6 +100,7 @@ class SmsInboxImporter(
                             )
                         )?.let(raws::add)
                     }
+                    Log.d(TAG, "Scanned $scanned inbox messages, ${raws.size} parsed as transactions")
                 }
             }.onFailure { Log.e(TAG, "Could not read the SMS inbox", it) }
 
@@ -103,9 +111,10 @@ class SmsInboxImporter(
         const val TAG = "SmsInboxImporter"
 
         /**
-         * A busy inbox holds tens of thousands of messages. Reading the most recent
-         * few thousand covers years of banking without making the import feel hung.
+         * Messages to walk, newest first. A heavily-used handset accumulates a few
+         * thousand SMS over several years, so this reaches the whole inbox for
+         * almost everyone while still bounding the worst case.
          */
-        const val DEFAULT_LIMIT = 5_000
+        const val DEFAULT_LIMIT = 20_000
     }
 }

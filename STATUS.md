@@ -1,7 +1,13 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 56 unit tests pass, lint is clean, and the app
+Alpha. Both flavours build, all 79 unit tests pass, lint is clean, and the app
 captures, stores and displays real payments end to end.
+
+The SMS parser is measured against a 4,103-message backup from a real handset:
+**603 of 652 candidate messages captured (92%)**, with zero closing balances
+misread as payment amounts. The 49 misses are almost all correct refusals -
+failed payments, collect requests, mandate approvals, bill reminders, OTPs and
+outright scam SMS.
 
 ## Working
 
@@ -20,6 +26,15 @@ Android exposes no notification history to third-party apps
 (`ACCESS_NOTIFICATION_HISTORY` is signature-level), so SMS and CSV import are the
 only routes to history that predates installation. See `BUILD.md`.
 
+### Manual entry
+
+Amount, counterparty, spent/received, **payment type** (UPI, cash, card, ATM,
+bank transfer) and an editable **date and time**. The date matters: the common
+reason to type an entry is remembering a payment later, and defaulting to now
+without letting it be changed would file this morning's chai on the wrong day and
+quietly corrupt every daily total. Payment type is stored as `Channel`, and the
+schema already carries `category_id` for categories to hang off later.
+
 ### Pipeline
 
 Every rail converges on one path: **parse → dedupe → fuse → resolve → persist →
@@ -27,9 +42,17 @@ nudge**.
 
 - **Parser** (`core/parser`) — templates keyed on *message shape* rather than on
   app, so a wording the author never saw is still read. Currency is always parsed
-  and never assumed. Amounts go through `BigDecimal`, never `Double`. A loose
-  catch-all runs last, so an unrecognised phrasing lands as a reviewable row
-  instead of vanishing.
+  and never assumed. Amounts go through `BigDecimal`, never `Double`. Account
+  numbers and reference numbers are scanned for across the whole message, because
+  they move around far more than the sentence stating the payment does.
+
+  Notifications get a loose catch-all, so an unrecognised phrasing lands as a
+  reviewable row instead of vanishing. SMS deliberately does not: an inbox is
+  thousands of messages of marketing, OTPs and bill reminders written in the same
+  grammar as payments. Instead every SMS shape anchors its amount hard against
+  the verb — which is also what stops a closing balance being banked as a
+  payment — and a veto rejects money that has not actually moved ("will be
+  debited", "has failed", "amount payable").
 - **Dedupe** — SHA-256 over message body *and* post time. A listener rebind
   replays identical hashes and collapses; two separate ₹20 chai payments do not.
 - **Fusion** (`core/fusion`) — exact RRN → confidence 1.0; matching amount,
@@ -69,7 +92,16 @@ Verifiable on the artifact, not just claimed:
 - Notifications older than 5 minutes were discarded, which made a tray sweep
   pointless. Removed; the timestamped dedupe hash handles replays instead.
 - SMS was documented but never implemented — no permission, no receiver, no
-  reader.
+  reader. Once written, the first template set matched **1 of 652** real messages,
+  because every rule demanded an account number immediately after the verb and
+  almost no bank writes them that way. Rebuilt against the corpus: 92%.
+- `SmsInboxImporter` appended `LIMIT` to the query's sort order. That is a SQLite
+  implementation detail the SMS provider is free to reject, and some OEM builds
+  throw on it — failing the whole import. The cap is applied while walking the
+  cursor now.
+- A bulk import re-read the user-rule table once per message. Hoisted out of the
+  loop; on an encrypted database that was most of the wall-clock cost of importing
+  years of history.
 - `strings.xml` closed with `</string>`; `ic_notification.xml` had a `<resources>`
   root and no closing tag; launcher icons did not exist; the theme inherited from
   `Theme.Material3.*`, which Compose Material3 does not ship. All four broke the
@@ -97,4 +129,4 @@ Verifiable on the artifact, not just claimed:
 - Editing or deleting a transaction from the UI (`softDelete` exists underneath).
 - PDF and XLS statement import. CSV only.
 - Release signing — release builds still use the debug key.
-- Instrumented tests. All 56 tests are JVM-only.
+- Instrumented tests. All 79 tests are JVM-only.

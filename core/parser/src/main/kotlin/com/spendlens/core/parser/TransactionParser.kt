@@ -78,7 +78,16 @@ data class TransactionTemplate(
     val direction: Direction,
     val channel: Channel,
     /** `null` means "refuse to guess" - the message must state its currency. */
-    val currencyDefault: String? = null
+    val currencyDefault: String? = null,
+    /**
+     * If this matches, the template declines however well [pattern] fits.
+     *
+     * Banks describe money that has *not* moved in exactly the same grammar as
+     * money that has: "INR 605.00 will be debited", "Rs. 349.0 has failed",
+     * "Rs. 419.00 will be credited". Without a veto those become phantom
+     * transactions, which is worse than missing a real one.
+     */
+    val veto: Regex? = null
 ) {
     fun routes(input: ParserInput): Boolean = when (input.source) {
         Source.NOTIFICATION -> input.packageName != null && input.packageName in packageNames
@@ -87,9 +96,10 @@ data class TransactionTemplate(
     }
 
     /**
-     * Indian sender IDs are `<2-letter operator><separator><bank code>`, and the
-     * operator prefix rotates (VK-HDFCBK, AD-HDFCBK, JD-HDFCBK are the same bank).
-     * Match on the bank code only.
+     * Indian sender IDs wrap the bank code in routing noise on both sides -
+     * `VK-HDFCBK`, `AD-HDFCBK` and `JD-HDFCBK` are one bank, and so are `AIRBNK-S`
+     * and `AIRBNK-G`. The bank code is the longest hyphen-separated part; the
+     * operator prefix is two characters and the circle suffix is one.
      */
     fun matchesSender(sender: String?): Boolean {
         if (sender == null || senderIds.isEmpty()) return false
@@ -99,6 +109,8 @@ data class TransactionTemplate(
 
     fun extract(input: ParserInput): RawTxn? {
         val text = input.title?.let { "$it ${input.body}" } ?: input.body
+        if (veto?.containsMatchIn(text) == true) return null
+
         val match = pattern.find(text) ?: return null
 
         val amount = match.groupOrNull("amount")?.let(::parseAmountMinor) ?: return null
@@ -117,8 +129,11 @@ data class TransactionTemplate(
             direction = direction,
             counterpartyVpa = match.groupOrNull("vpa")?.lowercase(),
             counterpartyNameRaw = match.groupOrNull("name")?.let(::cleanName),
-            rrn = match.groupOrNull("rrn"),
-            accountTail = match.groupOrNull("accountTail"),
+            // The reference and account number sit in a trailer that varies far
+            // more than the sentence stating the payment, so they are scanned for
+            // across the whole message rather than pinned into every template.
+            rrn = match.groupOrNull("rrn") ?: findReference(text),
+            accountTail = (match.groupOrNull("accountTail") ?: findAccountTail(text))?.takeLast(4),
             channel = channel,
             instrument = null,  // TODO: Extract from message
             templateId = id,
@@ -128,7 +143,43 @@ data class TransactionTemplate(
 
     private companion object {
         fun normalizeSender(sender: String): String =
-            sender.substringAfterLast('-').trim().uppercase()
+            sender.split('-').maxByOrNull { it.length }.orEmpty().trim().uppercase()
+
+        /**
+         * `a/c XX2793`, `Ac XXXXXXXX00022793`, `A/c X0563`, `account XXXXXXXX7080`,
+         * `Card x5678`. Only the last four digits are kept, so the varying mask
+         * length does not matter.
+         *
+         * A masking character is required, which is what keeps the ATM's own id
+         * out of `... through ATMXX3644` when the real account is quoted earlier -
+         * `find` takes the leftmost match, and the account always leads.
+         */
+        val ACCOUNT_SCAN = Regex(
+            """\b(?:a/c|ac|acct|account|card)\s*(?:no\.?)?\s*[:\s]*[Xx*]+\s*(\d{3,})""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /**
+         * Every reference trailer seen in the wild: `UPI Ref ID 431713243698`,
+         * `(UPI Ref ID:414160752628)`, `IMPS Ref no 408008533167`,
+         * `Ref No 602442799714`, `RRN406715003806`, `Txn ID: 113347733869`,
+         * `thru UPI:430696560905`.
+         */
+        val REFERENCE_SCANS = listOf(
+            Regex(
+                """(?:(?:UPI|IMPS|NEFT|RTGS)\s*)?Ref(?:erence)?\s*(?:ID|No)?\s*[:.#]?\s*(\d{6,})""",
+                RegexOption.IGNORE_CASE
+            ),
+            Regex("""RRN\s*[:.#]?\s*(\d{6,})""", RegexOption.IGNORE_CASE),
+            Regex("""Txn\s*(?:ID|No)\s*[:.#]?\s*(\d{6,})""", RegexOption.IGNORE_CASE),
+            Regex("""(?:thru|through)\s+UPI\s*[:.]\s*(\d{6,})""", RegexOption.IGNORE_CASE)
+        )
+
+        fun findAccountTail(text: String): String? =
+            ACCOUNT_SCAN.find(text)?.groupValues?.getOrNull(1)
+
+        fun findReference(text: String): String? =
+            REFERENCE_SCANS.firstNotNullOfOrNull { it.find(text)?.groupValues?.getOrNull(1) }
 
         /**
          * Reading a named group that the pattern does not declare throws, so every
@@ -376,80 +427,209 @@ object BuiltInTemplates {
     // ---------------------------------------------------------------- Bank SMS
 
     /**
-     * Sender IDs are matched on the bank code only, so the rotating two-letter
-     * operator prefix (VK-, AD-, JD-, ...) does not have to be enumerated.
+     * Rebuilt against a 4,103-message backup from a real handset. The previous
+     * set matched 1 of 652 candidate messages, because every template demanded an
+     * account number immediately after the verb and almost no bank writes them
+     * that way.
+     *
+     * Two things drive the design:
+     *
+     *  - **The account number is optional and moves.** It can lead
+     *    (`A/c XX2793 debited INR 249.00`), trail
+     *    (`INR 30.00 sent from your account XXXXXXXX7080`), or be absent entirely
+     *    (`Rs. 1.00 debited from Airtel Payments Bank a/c`). It is scanned for
+     *    globally instead of being pinned into the sentence.
+     *  - **There is no catch-all here.** Notifications from a payment app are
+     *    few and almost all real, so a loose fallback pays off. An SMS inbox is
+     *    thousands of messages of marketing, OTPs and bill reminders written in
+     *    the same grammar as payments, so a loose fallback invents transactions.
+     *    Every shape below is anchored to a verb sitting directly against its
+     *    amount, which is also what stops a closing balance being read as the
+     *    amount paid.
+     */
+
+    /**
+     * Sender IDs are matched on the bank code, ignoring both the rotating
+     * operator prefix and the circle suffix (`AIRBNK-S`, `VK-HDFCBK`).
+     *
+     * Routing is by message shape, not by this list: bank short codes are not
+     * standardised, and the corpus alone contained AIRBNK, PNBSMS, FedFiB and
+     * SBIUPI in four different layouts. The list documents what has been seen.
      */
     val bankSenders: List<String> = listOf(
         "HDFCBK", "HDFCBN", "SBIUPI", "SBIINB", "SBIPSG", "CBSSBI", "ATMSBI",
         "ICICIB", "ICICIT", "AXISBK", "AXISBN", "KOTAKB", "PNBSMS", "PNBBNK",
         "BOBTXN", "BOBSMS", "CANBNK", "IDFCFB", "YESBNK", "INDUSB", "FEDBNK",
         "UNIONB", "IOBCHN", "CENTBK", "BOIIND", "UCOBNK", "IDBIBK", "RBLBNK",
-        "AUBANK", "BANDAN", "JIOPAY", "PYTMBK", "AIRBNK", "EQUTAS", "SRIRAM"
+        "AUBANK", "BANDAN", "JIOPAY", "PYTMBK", "AIRBNK", "EQUTAS", "FEDFIB",
+        "BHIMAP", "SRIRAM"
+    )
+
+    /**
+     * Money that has not actually moved.
+     *
+     * Banks announce intentions, failures and bills in the same grammar as
+     * completed payments - "INR 605.00 will be debited from your account",
+     * "Payment of Rs. 349.0 has failed", "Rs. 419.00 will be credited",
+     * "Total amount payable: Rs. 706.82". A phantom transaction is worse than a
+     * missed one, because the user cannot tell it is wrong without opening their
+     * bank app.
+     */
+    private val NOT_A_TRANSACTION = Regex(
+        """\b(?:will\s+be\s+(?:debited|credited|refunded)|has\s+failed|failed\s+for""" +
+            """|has\s+requested|requested\s+money|is\s+due\s+for\s+payment|amount\s+payable""" +
+            """|refund\s+for\s+.{0,20}initiated|if\s+debited)\b""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
 
     private fun bankSms(id: String, pattern: String, direction: Direction, channel: Channel = Channel.UPI) =
         TransactionTemplate(
             id = id,
             senderIds = bankSenders,
-            // Any sender: bank short codes are not standardised and new ones
-            // appear constantly. Routing is done by the message shape instead,
-            // which is far harder to accidentally match than a sender ID.
             anySender = true,
             pattern = Regex(pattern, SMS),
             direction = direction,
-            channel = channel
+            channel = channel,
+            veto = NOT_A_TRANSACTION
         )
 
-    /** `Rs.250.00 debited from a/c **1234 to VPA swiggy@ybl ... UPI Ref No 123456789012` */
-    val smsDebitVpaRef = bankSms(
-        id = "sms.debit.vpa-ref.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited\s+from\s+(?:your\s+)?$ACCOUNT_TAIL""" +
-            """.*?(?:to\s+(?:VPA\s+)?|VPA\s+)$VPA_GROUP.*?$REF""",
+    // ------------------------------------------------------------- SMS: debits
+
+    /** `Rs.250.00 debited from a/c **1234 to VPA swiggy@ybl ... UPI Ref No 1234` */
+    val smsDebitToVpa = bankSms(
+        id = "sms.debit.to-vpa.v1",
+        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited.{0,80}?(?:to\s+(?:VPA\s+)?|VPA\s*[:\s])$VPA_GROUP""",
         direction = Direction.DEBIT
     )
 
-    val smsCreditVpaRef = bankSms(
-        id = "sms.credit.vpa-ref.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?credited\s+to\s+(?:your\s+)?$ACCOUNT_TAIL""" +
-            """.*?(?:from\s+(?:VPA\s+)?|VPA\s+)$VPA_GROUP.*?$REF""",
-        direction = Direction.CREDIT
-    )
-
-    /** `Rs 500 debited from A/c XX1234 and credited to ramesh@okicici` (no ref). */
-    val smsDebitVpa = bankSms(
-        id = "sms.debit.vpa.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited\s+from\s+(?:your\s+)?$ACCOUNT_TAIL""" +
-            """.*?(?:to\s+(?:VPA\s+)?|VPA\s+)$VPA_GROUP""",
+    /**
+     * `UPI AutoPay <vpa> for Google Play Debited Rs.119.00 scheduled on 04/07/2026`
+     * - the only SMS shape in the corpus that names the merchant outright.
+     */
+    val smsDebitAutoPay = bankSms(
+        id = "sms.debit.autopay.v1",
+        pattern = """UPI\s*AutoPay\s+$VPA_GROUP\s+for\s+$NAME_GROUP\s+debited\s+$CUR\s*$AMOUNT""",
         direction = Direction.DEBIT
     )
 
-    val smsCreditVpa = bankSms(
-        id = "sms.credit.vpa.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?credited\s+to\s+(?:your\s+)?$ACCOUNT_TAIL""" +
-            """.*?(?:from\s+(?:VPA\s+)?|VPA\s+)$VPA_GROUP""",
-        direction = Direction.CREDIT
+    /**
+     * `Rs 20.00 sent via UPI on 18-12-2025 at 01:55:31 to THE RICH TABLE.Ref:5352...`
+     *
+     * Federal Bank names the payee, which no other SMS debit shape in the corpus
+     * does, so this runs well ahead of the anonymous shapes that would otherwise
+     * swallow the same message.
+     */
+    val smsDebitSentViaUpi = bankSms(
+        id = "sms.debit.sent-via-upi.v1",
+        pattern = """$CUR\s*$AMOUNT\s+sent\s+via\s+UPI\b.{0,60}?\s+to\s+(?<name>[^.\n]{2,50}?)\s*\.\s*Ref""",
+        direction = Direction.DEBIT
+    )
+
+    /** `Subscription payment to X CORP. PAID FEATURES for Rs 89.00 is successful` */
+    val smsDebitPaymentTo = bankSms(
+        id = "sms.debit.payment-to.v1",
+        pattern = """payment\s+to\s+(?<name>[^\n]{2,50}?)\s+for\s+$CUR\s*$AMOUNT\s+is\s+success""",
+        direction = Direction.DEBIT,
+        channel = Channel.CARD
+    )
+
+    /** `Rs. 1.00 debited from Airtel Payments Bank a/c Txn ID 815926821055 Bal:5.17` */
+    val smsDebitAmountFirst = bankSms(
+        id = "sms.debit.amount-first.v1",
+        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited\b""",
+        direction = Direction.DEBIT,
+        channel = Channel.UNKNOWN
+    )
+
+    /**
+     * `A/c XX2793 debited INR 249.00 Dt 01-11-24 thru UPI:430696560905`
+     * `Ac XX2793 debited with Rs.300.00,20-03-2024 through ATMXX3644`
+     *
+     * The account leads, so the amount is only trustworthy when it sits directly
+     * against the verb - otherwise the closing balance further along the message
+     * is an equally good match.
+     */
+    val smsDebitAccountFirst = bankSms(
+        id = "sms.debit.account-first.v1",
+        pattern = """\b(?:a/c|ac|acct|account)\b.{0,30}?[-\s]debited\s*(?:with|by|for)?\s*$CUR\s*$AMOUNT""",
+        direction = Direction.DEBIT,
+        channel = Channel.UNKNOWN
+    )
+
+    /** `INR 30.00 sent from your account XXXXXXXX7080 Sent to your beneficiary` */
+    val smsDebitSentFrom = bankSms(
+        id = "sms.debit.sent-from-account.v1",
+        pattern = """$CUR\s*$AMOUNT\s+sent\s+from\s+your\s+(?:a/c|ac|account)""",
+        direction = Direction.DEBIT,
+        channel = Channel.UNKNOWN
+    )
+
+    /** `You've spent INR 85.56 at 18:34 on July 7, 2025.` (Fi / Federal Bank) */
+    val smsDebitSpent = bankSms(
+        id = "sms.debit.spent.v1",
+        pattern = """\byou(?:'ve|\s+have)?\s+spent\s+$CUR\s*$AMOUNT""",
+        direction = Direction.DEBIT,
+        channel = Channel.UNKNOWN
+    )
+
+    /** `Withdrawn: INR 200.00 | This transaction occurred on March 28, 2024` */
+    val smsDebitWithdrawn = bankSms(
+        id = "sms.debit.withdrawn.v1",
+        pattern = """\bwithdrawn\s*[:\-]?\s*$CUR\s*$AMOUNT""",
+        direction = Direction.DEBIT,
+        channel = Channel.CARD
     )
 
     /** `Rs.1200.00 spent on HDFC Bank Card x1234 at AMAZON on 26-07-26` */
     val smsCardSpend = bankSms(
         id = "sms.debit.card-spend.v1",
         pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?(?:spent|used)\s+(?:on|at|using)\s+.{0,40}?""" +
-            """(?:card|a/c)\s*(?:no\.?)?\s*[Xx*]*(?<accountTail>\d{4}).*?\s+at\s+(?<name>[^.\n]{1,60})""",
+            """card\s*(?:no\.?)?\s*[Xx*]*\d{4}.{0,20}?\s+at\s+(?<name>[^.\n]{1,60})""",
         direction = Direction.DEBIT,
         channel = Channel.CARD
     )
 
-    /** Debit stated with an account, but nothing else legible. */
-    val smsDebitMinimal = bankSms(
-        id = "sms.debit.minimal.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?debited\s+from\s+(?:your\s+)?$ACCOUNT_TAIL""",
-        direction = Direction.DEBIT,
+    // ------------------------------------------------------------ SMS: credits
+
+    /** `Rs.1,500.00 credited to a/c XX0563 from VPA ramesh@okicici` */
+    val smsCreditFromVpa = bankSms(
+        id = "sms.credit.from-vpa.v1",
+        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?credited.{0,80}?(?:from\s+(?:VPA\s+)?|VPA\s*[:\s])$VPA_GROUP""",
+        direction = Direction.CREDIT
+    )
+
+    /**
+     * `your A/c X0563-credited by Rs.15000 on 24Jan26 transfer from RAJ KUMAR
+     *  CHOUDHURY Ref No 602442799714` - SBI names the sender, so this runs ahead
+     * of the shapes that would capture the same money anonymously.
+     */
+    val smsCreditNamedTransfer = bankSms(
+        id = "sms.credit.named-transfer.v1",
+        pattern = """credited\s*(?:with|by|for)?\s*$CUR\s*$AMOUNT.{0,40}?\btransfer\s+from\s+(?<name>[^.\n]{2,40}?)""" +
+            """(?=\s+(?:Ref|RRN|Txn|UPI|on\b)|[.\n]|$)""",
+        direction = Direction.CREDIT
+    )
+
+    /**
+     * `Airtel Payments Bank a/c is credited with Rs.1000.00`
+     * `Ac XXXXXXXX00022793 Credited with Rs.9299.00 ... Aval Bal Rs.60941.98`
+     * `Your a/c XX2793 is credited for INR 4000.00 ... Available Bal INR 4530.98`
+     * `your a/c no XX793 is credited by Rs 2000.00 ... (IMPS Ref no ...)`
+     *
+     * Anchoring the amount hard against `credited` is what keeps the balance that
+     * follows out of the ledger.
+     */
+    val smsCreditWith = bankSms(
+        id = "sms.credit.credited-with.v1",
+        pattern = """\bcredited\s+(?:with|for|by)\s+$CUR\s*$AMOUNT""",
+        direction = Direction.CREDIT,
         channel = Channel.UNKNOWN
     )
 
-    val smsCreditMinimal = bankSms(
-        id = "sms.credit.minimal.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:has\s+been\s+)?credited\s+to\s+(?:your\s+)?$ACCOUNT_TAIL""",
+    /** `Rs.5.0 cashback for Prepaid Recharge credited to your Airtel a/c` */
+    val smsCreditAmountFirst = bankSms(
+        id = "sms.credit.amount-first.v1",
+        pattern = """$CUR\s*$AMOUNT\s+(?:[\w\s]{0,40}?\s+)?credited\s+(?:to|in)\b""",
         direction = Direction.CREDIT,
         channel = Channel.UNKNOWN
     )
@@ -512,15 +692,24 @@ object BuiltInTemplates {
         debitAmountFirst,
         creditAmountFirst,
         creditReceivedFrom,
-        // Bank SMS, richest first.
-        smsDebitVpaRef,
-        smsCreditVpaRef,
-        smsDebitVpa,
-        smsCreditVpa,
+        // Bank SMS, richest first: a shape that names the counterparty must be
+        // offered before one that would capture the same money anonymously.
+        smsDebitToVpa,
+        smsCreditFromVpa,
+        smsDebitSentViaUpi,
+        smsDebitAutoPay,
+        smsDebitPaymentTo,
+        smsCreditNamedTransfer,
         smsCardSpend,
-        smsDebitMinimal,
-        smsCreditMinimal,
+        smsDebitWithdrawn,
+        smsDebitSentFrom,
+        smsDebitSpent,
+        smsDebitAmountFirst,
+        smsDebitAccountFirst,
+        smsCreditWith,
+        smsCreditAmountFirst,
         // Nothing matched: capture it anyway, flagged for review.
+        // Notifications only - see the note above the SMS block.
         genericCreditVerbFirst,
         genericCreditAmountFirst,
         genericDebitVerbFirst,

@@ -14,6 +14,7 @@ import com.spendlens.data.SmsInboxImporter
 import com.spendlens.data.TransactionIngestor
 import com.spendlens.data.TransactionRepository
 import com.spendlens.service.UpiNotificationListener
+import com.spendlens.ui.entry.ManualEntry
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -106,23 +107,17 @@ class DayStreamViewModel(
 
     // ------------------------------------------------------------------- entry
 
-    fun addManual(
-        amountMinor: Long,
-        displayName: String,
-        direction: Direction,
-        occurredAt: Long,
-        note: String?,
-        currency: String = "INR"
-    ) {
+    fun addManual(entry: ManualEntry, currency: String = "INR") {
         viewModelScope.launch {
             runCatching {
                 ingestor.ingestManual(
-                    amountMinor = amountMinor,
+                    amountMinor = entry.amountMinor,
                     currency = currency,
-                    direction = direction,
-                    displayName = displayName,
-                    occurredAt = occurredAt,
-                    note = note
+                    direction = entry.direction,
+                    displayName = entry.displayName,
+                    occurredAt = entry.occurredAt,
+                    channel = entry.channel,
+                    note = entry.note
                 )
             }.fold(
                 onSuccess = { _events.send(DayStreamEvent.TransactionAdded) },

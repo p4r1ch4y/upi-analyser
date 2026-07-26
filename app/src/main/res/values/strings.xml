@@ -42,7 +42,18 @@
     <string name="field_amount">Amount</string>
     <string name="field_merchant">Paid to / received from</string>
     <string name="field_note">Note (optional)</string>
+    <string name="field_payment_type">How you paid</string>
+    <string name="field_when">When</string>
     <string name="add_result">Added</string>
+    <string name="action_done">Done</string>
+    <string name="action_cancel">Cancel</string>
+
+    <!-- Payment types -->
+    <string name="channel_upi">UPI</string>
+    <string name="channel_cash">Cash</string>
+    <string name="channel_card">Card</string>
+    <string name="channel_atm">ATM</string>
+    <string name="channel_bank_transfer">Bank transfer</string>
 
     <!-- Import -->
     <string name="import_title">Import transactions</string>
