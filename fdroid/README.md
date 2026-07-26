@@ -27,7 +27,7 @@ SMS is the only rail that can recover spending from before installation.
 | No ads, tracking, or proprietary services | none |
 | No binary blobs in the source tree | only `gradle/wrapper/gradle-wrapper.jar`, which F-Droid replaces |
 | fastlane metadata | `fastlane/metadata/android/en-US/` |
-| Screenshots | **not yet** — see below |
+| Screenshots | 7, in `fastlane/metadata/android/en-US/images/phoneScreenshots/` |
 
 ## Dependency licences
 
@@ -53,13 +53,15 @@ declared but never referenced.
 
 ## Screenshots
 
-Not committed, deliberately. The only screenshots taken so far are of the
-author's real ledger and contain a third party's name, phone number and UPI
-address. Store screenshots must be taken from a fresh install with invented data,
-and go in
-`fastlane/metadata/android/en-US/images/phoneScreenshots/` as `1.png`, `2.png`, …
+Seven, all from a clean install with invented data, in
+`fastlane/metadata/android/en-US/images/phoneScreenshots/`, ordered as a story:
+the stream, a split payment's detail, insights, the split sheet, manual entry,
+import, and the first-run permission gate.
 
-F-Droid publishes without them; they only affect how the listing looks.
+Screenshots of a real ledger must never be committed. One taken during this pass
+showed a genuine counterparty's full name against a real transaction and was
+discarded; the earlier set also carried an account number, a phone number and a
+UPI address. Anything published here should come from a fresh install.
 
 ## Before submitting
 
@@ -80,8 +82,9 @@ Two things still need doing, and both need a human:
    git clone --depth 1 https://gitlab.com/p4r1ch4y-group/SpendLens.git
    ```
 
-3. **Fill in `AuthorName`** in `fdroid/com.spendlens.yml` if you want a developer
-   name on the listing. Left blank rather than guessed.
+3. **Set up release signing** if you want direct APK downloads as well as
+   F-Droid — see "Signing a release" in `BUILD.md`. F-Droid itself does not need
+   it, and note that the two builds cannot replace each other on a device.
 
 ## Submitting
 

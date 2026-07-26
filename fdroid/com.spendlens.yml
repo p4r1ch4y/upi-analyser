@@ -11,13 +11,13 @@
 Categories:
   - Money
 License: GPL-3.0-only
-# Optional, and left blank on purpose rather than guessed — fill in the name you
-# want shown as the developer on the F-Droid listing.
-# AuthorName:
-# AuthorEmail:
+AuthorName: Subrata
+AuthorEmail: iamcsubrata@gmail.com
+AuthorWebSite: https://p4r1ch4y.github.io/
+WebSite: https://p4r1ch4y.github.io/
 SourceCode: https://gitlab.com/p4r1ch4y-group/SpendLens
 IssueTracker: https://gitlab.com/p4r1ch4y-group/SpendLens/-/issues
-Changelog: https://gitlab.com/p4r1ch4y-group/SpendLens/-/tags
+Changelog: https://gitlab.com/p4r1ch4y-group/SpendLens/-/blob/main/CHANGELOG.md
 
 AutoName: SpendLens
 
