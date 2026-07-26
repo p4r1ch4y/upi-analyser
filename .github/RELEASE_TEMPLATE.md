@@ -1,7 +1,7 @@
 SpendLens tracks UPI spending entirely on your phone. It holds no `INTERNET`
 permission, so nothing it reads can leave the device.
 
-See [CHANGELOG.md](CHANGELOG.md) for what changed in this version.
+See [CHANGELOG.md](https://gitlab.com/p4r1ch4y-group/SpendLens/-/blob/main/CHANGELOG.md) for what changed in this version.
 
 ## Which APK do I want?
 
