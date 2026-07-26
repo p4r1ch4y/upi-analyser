@@ -18,10 +18,10 @@ SMS is the only rail that can recover spending from before installation.
 
 | Requirement | Status |
 |---|---|
-| Public repo with real source | [https://gitlab.com/p4r1ch4y-group/SpendLens](https://gitlab.com/p4r1ch4y-group/SpendLens) |
+| Public repo with real source | [gitlab.com/p4r1ch4y-group/SpendLens](https://gitlab.com/p4r1ch4y-group/SpendLens) — verified: anonymous clone succeeds |
 | FOSS licence file | `LICENSE` — GPL-3.0 |
-| Version tag per release | `v0.1.0-alpha` |
-| Builds from a clean checkout | verified — fonts are committed, no generated files needed |
+| Version tag per release | `v0.1.1-alpha` (versionCode 2) |
+| Builds from a clean checkout | **verified** — anonymous clone at the tag builds `app-standard-release-unsigned.apk`, which is exactly what F-Droid signs |
 | Only FOSS dependencies | verified, see below |
 | No Google Play Services / Firebase | none — the app has no `INTERNET` permission at all |
 | No ads, tracking, or proprietary services | none |
@@ -63,28 +63,22 @@ showed a genuine counterparty's full name against a real transaction and was
 discarded; the earlier set also carried an account number, a phone number and a
 UPI address. Anything published here should come from a fresh install.
 
-## Before submitting
+## Ready to submit
 
-Two things still need doing, and both need a human:
+Everything on the checklist is done and checked against the live repository, not
+just assumed:
 
-1. **Screenshots** — see below. F-Droid publishes without them, but the listing
-   looks bare.
-2. **Make the project public.** Verified private as of the last check — an
-   anonymous clone fails, and F-Droid's build server clones anonymously over
-   HTTPS, so the build would never start:
+```bash
+# the exact operation F-Droid's build server performs
+git clone --branch v0.1.1-alpha --depth 1 \
+  https://gitlab.com/p4r1ch4y-group/SpendLens.git
+cd SpendLens && ./gradlew assembleStandardRelease
+# -> app-standard-release-unsigned.apk
+```
 
-   *Settings → General → Visibility, project features, permissions →
-   Project visibility → **Public** → Save changes.*
-
-   Confirm it worked from a machine that is not logged in:
-
-   ```bash
-   git clone --depth 1 https://gitlab.com/p4r1ch4y-group/SpendLens.git
-   ```
-
-3. **Set up release signing** if you want direct APK downloads as well as
-   F-Droid — see "Signing a release" in `BUILD.md`. F-Droid itself does not need
-   it, and note that the two builds cannot replace each other on a device.
+Unsigned is correct: F-Droid signs with its own key, and the build deliberately
+refuses to fall back to the Android debug certificate when no keystore is
+present.
 
 ## Submitting
 
