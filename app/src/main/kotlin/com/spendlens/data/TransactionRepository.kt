@@ -275,6 +275,36 @@ class TransactionRepository(
         changed
     }
 
+    /** How many unnamed payments share this label, amount and direction. */
+    suspend fun countSimilar(displayName: String, amountMinor: Long, direction: String): Int =
+        withContext(io) {
+            queries.countSimilarTransactions(displayName, amountMinor, direction)
+                .executeAsOne().toInt()
+        }
+
+    /**
+     * Renames every payment sharing a label, amount and direction.
+     *
+     * The bulk case for bank SMS: hundreds of rows say the same thing because the
+     * bank named no payee, and they group tightly by amount. Rows the user has
+     * already named are excluded, so this can never overwrite a deliberate choice.
+     */
+    suspend fun renameSimilar(
+        displayName: String,
+        amountMinor: Long,
+        direction: String,
+        newName: String,
+        now: Long = System.currentTimeMillis()
+    ) = withContext(io) {
+        queries.renameSimilarTransactions(
+            new_name = newName,
+            updated_at = now,
+            display_name = displayName,
+            amount_minor = amountMinor,
+            direction = direction
+        )
+    }
+
     /** Dedupe hashes are only useful for as long as a replay is plausible. */
     suspend fun pruneHashesOlderThan(cutoff: Long) = withContext(io) {
         queries.pruneOldHashes(cutoff)

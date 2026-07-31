@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -57,7 +58,8 @@ data class DayStreamActions(
     val onToggleDayExpanded: (LocalDate) -> Unit = {},
     val onAdd: () -> Unit = {},
     val onImport: () -> Unit = {},
-    val onMore: () -> Unit = {}
+    val onMore: () -> Unit = {},
+    val onQuery: (String) -> Unit = {}
 )
 
 /**
@@ -90,6 +92,14 @@ fun DayStreamScreen(
         }
 
         item {
+            SearchField(
+                query = state.query,
+                matchCount = state.matchCount,
+                onQuery = actions.onQuery
+            )
+        }
+
+        item {
             EntryActions(
                 onAdd = actions.onAdd,
                 onImport = actions.onImport,
@@ -98,7 +108,7 @@ fun DayStreamScreen(
             )
         }
 
-        item {
+        if (!state.searching) item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -146,9 +156,9 @@ fun DayStreamScreen(
             }
         }
 
-        val todayTransactions = today?.transactions.orEmpty()
+        val todayTransactions = if (state.searching) emptyList() else today?.transactions.orEmpty()
 
-        if (todayTransactions.isEmpty()) {
+        if (todayTransactions.isEmpty() && !state.searching) {
             item {
                 Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 28.dp)) {
                     Text(
@@ -170,8 +180,22 @@ fun DayStreamScreen(
             StreamRow(txn, state, actions)
         }
 
-        items(state.earlier, key = { it.date.toEpochDay() }) { day ->
+        // Searching flattens the stream: every matching day is open, because a
+        // result list that needs unfolding is not a result list.
+        val remainingDays = if (state.searching) state.days else state.earlier
+        items(remainingDays, key = { it.date.toEpochDay() }) { day ->
             CollapsibleDay(day, state, actions)
+        }
+
+        if (state.searching && state.matchCount == 0) {
+            item {
+                Text(
+                    text = stringResource(R.string.search_no_matches, state.query),
+                    style = typography.bodySmall,
+                    color = colors.mist,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp)
+                )
+            }
         }
 
         item { Spacer(Modifier.navigationBarsPadding().height(96.dp)) }
@@ -237,7 +261,7 @@ private fun CollapsibleDay(
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
-    val expanded = state.isExpanded(day.date)
+    val expanded = state.isExpanded(day.date) || state.searching
     val allSelected = day.transactions.isNotEmpty() && day.transactions.all { it.id in state.selected }
 
     Column(modifier = Modifier.fillMaxWidth().background(colors.paperSunk)) {
@@ -403,6 +427,37 @@ private fun StreamRow(
                 .background(colors.ruleSoft)
         )
     }
+}
+
+/** Search across name, VPA, tag and amount. */
+@Composable
+private fun SearchField(query: String, matchCount: Int, onQuery: (String) -> Unit) {
+    val colors = SpendTheme.colors
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQuery,
+        placeholder = { Text(stringResource(R.string.search_placeholder)) },
+        singleLine = true,
+        trailingIcon = {
+            if (query.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.search_clear),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.graphite,
+                    modifier = Modifier
+                        .clickable { onQuery("") }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+        },
+        supportingText = if (query.isBlank()) null else {
+            { Text(stringResource(R.string.search_matches, matchCount)) }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp)
+            .padding(top = 12.dp)
+    )
 }
 
 @Composable

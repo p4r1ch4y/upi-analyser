@@ -63,6 +63,25 @@ data class TxnUi(
     val effectiveMinor: Long get() = split?.myShareMinor ?: amountMinor
 
     val isSplit: Boolean get() = split != null
+
+    /**
+     * Free-text match across everything a person might remember about a payment:
+     * who it was, what it cost, what they tagged it, and the note they left.
+     *
+     * The amount is matched as plain digits so that typing "250" finds ₹250
+     * without the user having to guess the formatting - "2,50" and "250.00" are
+     * the same payment to them.
+     */
+    fun matches(query: String): Boolean {
+        val needle = query.trim().lowercase()
+        if (needle.isEmpty()) return true
+        if (displayName.lowercase().contains(needle)) return true
+        if (counterpartyVpa?.lowercase()?.contains(needle) == true) return true
+        if (tags.any { it.name.lowercase().contains(needle) }) return true
+        val digits = needle.filter { it.isDigit() }
+        if (digits.isNotEmpty() && (amountMinor / 100).toString().contains(digits)) return true
+        return false
+    }
 }
 
 /** A calendar day of payments, newest day first. */
@@ -93,8 +112,14 @@ data class DayStreamUiState(
     /** Transactions the user has ticked, for a bulk split or tag. */
     val selected: Set<String> = emptySet(),
     val trip: TripBanner? = null,
-    val allTags: List<TagRef> = emptyList()
+    val allTags: List<TagRef> = emptyList(),
+    /** Non-blank while the user is searching; the stream shows only matches. */
+    val query: String = ""
 ) {
+    val searching: Boolean get() = query.isNotBlank()
+
+    val matchCount: Int get() = days.sumOf { it.transactions.size }
+
     val today: DayUi? get() = days.firstOrNull()
     val earlier: List<DayUi> get() = days.drop(1)
     val selecting: Boolean get() = selected.isNotEmpty()
@@ -118,6 +143,7 @@ sealed interface DayStreamEvent {
     data object NoBrowser : DayStreamEvent
     data object Copied : DayStreamEvent
     data object Renamed : DayStreamEvent
+    data class RenamedMany(val count: Int) : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
     data object ListenerNotConnected : DayStreamEvent
@@ -199,6 +225,9 @@ class DayStreamViewModel(
     private val importing = MutableStateFlow(false)
     private val expanded = MutableStateFlow<Set<LocalDate>>(emptySet())
     private val selected = MutableStateFlow<Set<String>>(emptySet())
+    private val query = MutableStateFlow("")
+
+    fun setQuery(value: String) { query.value = value }
 
     private val _events = Channel<DayStreamEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
@@ -210,9 +239,12 @@ class DayStreamViewModel(
         annotations.splitsSince(since),
         annotations.tagLinksSince(since),
         annotations.allTags(),
-        combine(importing, expanded, selected) { busy, open, ticked -> Triple(busy, open, ticked) }
-    ) { rows, splits, tagLinks, tags, (busy, open, ticked) ->
-        val days = groupByDay(rows, splits, tagLinks)
+        combine(importing, expanded, selected, query) { busy, open, ticked, text ->
+            StreamControls(busy, open, ticked, text)
+        }
+    ) { rows, splits, tagLinks, tags, controls ->
+        val (busy, open, ticked, text) = controls
+        val days = groupByDay(rows, splits, tagLinks, text)
         DayStreamUiState(
             days = days,
             loading = false,
@@ -221,8 +253,9 @@ class DayStreamViewModel(
             // A row that has since been deleted must not stay ticked, or the
             // action bar offers to split payments that are no longer there.
             selected = ticked intersect days.flatMap { day -> day.transactions.map { it.id } }.toSet(),
-            trip = tripBanner(days, tags),
-            allTags = tags
+            trip = if (text.isBlank()) tripBanner(days, tags) else null,
+            allTags = tags,
+            query = text
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayStreamUiState())
 
@@ -376,14 +409,36 @@ class DayStreamViewModel(
      * same address; without one there is nothing to generalise from, so only this
      * row changes. Most bank SMS falls in the second case.
      */
-    fun rename(txnId: String, displayName: String) {
-        val txn = state.value.transaction(txnId)
+    fun rename(txnId: String, displayName: String, applyToSimilar: Boolean = false) {
+        val txn = state.value.transaction(txnId) ?: return
         viewModelScope.launch {
-            val vpa = txn?.counterpartyVpa
-            if (vpa != null) repository.nameMerchant(vpa, displayName)
-            else repository.rename(txnId, displayName)
-            _events.send(DayStreamEvent.Renamed)
+            val vpa = txn.counterpartyVpa
+            when {
+                vpa != null -> {
+                    repository.nameMerchant(vpa, displayName)
+                    _events.send(DayStreamEvent.Renamed)
+                }
+                applyToSimilar -> {
+                    val direction = if (txn.isCredit) "CREDIT" else "DEBIT"
+                    val count = repository.countSimilar(txn.displayName, txn.amountMinor, direction)
+                    repository.renameSimilar(txn.displayName, txn.amountMinor, direction, displayName)
+                    _events.send(DayStreamEvent.RenamedMany(count))
+                }
+                else -> {
+                    repository.rename(txnId, displayName)
+                    _events.send(DayStreamEvent.Renamed)
+                }
+            }
         }
+    }
+
+    /** How many unnamed payments the rename sheet would sweep up. */
+    suspend fun similarCount(txnId: String): Int {
+        val txn = state.value.transaction(txnId) ?: return 0
+        if (txn.counterpartyVpa != null) return 0
+        val direction = if (txn.isCredit) "CREDIT" else "DEBIT"
+        return (repository.countSimilar(txn.displayName, txn.amountMinor, direction) - 1)
+            .coerceAtLeast(0)
     }
 
     fun delete(id: String) {
@@ -452,16 +507,24 @@ class DayStreamViewModel(
     private fun groupByDay(
         rows: List<Transactions>,
         splits: Map<String, SplitSummary>,
-        tagLinks: Map<String, List<TagRef>>
+        tagLinks: Map<String, List<TagRef>>,
+        query: String
     ): List<DayUi> {
         val today = Days.localDate(System.currentTimeMillis(), zone)
         val byDate = rows
             .map { it.toUi(splits[it.id], tagLinks[it.id].orEmpty()) }
+            .filter { it.matches(query) }
             .groupBy { Days.localDate(it.occurredAt, zone) }
 
-        // Today always renders, even with nothing in it - the empty state lives in
-        // the hero, not in place of the whole screen.
-        val dates = (byDate.keys + today).distinct().sortedDescending()
+        // While searching, an empty day is noise - the user asked a question and
+        // wants the answers, not a calendar with a gap where today would be.
+        val dates = if (query.isNotBlank()) {
+            byDate.keys.sortedDescending()
+        } else {
+            // Otherwise today always renders even when empty: the empty state
+            // lives in the hero, not in place of the whole screen.
+            (byDate.keys + today).distinct().sortedDescending()
+        }
 
         return dates.map { date ->
             val transactions = byDate[date].orEmpty().sortedBy { it.occurredAt }
@@ -525,6 +588,14 @@ class DayStreamViewModel(
         counterpartyVpa = counterparty_vpa,
         split = split,
         tags = tags
+    )
+
+    /** Grouped so `combine` stays within its five-flow overload. */
+    private data class StreamControls(
+        val importing: Boolean,
+        val expanded: Set<LocalDate>,
+        val selected: Set<String>,
+        val query: String
     )
 
     companion object {

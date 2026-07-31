@@ -523,3 +523,31 @@ relabelTransaction:
 UPDATE transactions
 SET display_name = :display_name, updated_at = :updated_at
 WHERE id = :id AND (flags & 64) = 0;
+
+-- How many other payments share this one's label and amount.
+--
+-- Bank SMS that names no payee produces hundreds of rows reading the same thing,
+-- and they cluster hard by amount: in six months of one real ledger, 442 of 581
+-- unnamed rows sat in a group of three or more. The daily ₹10 is one recurring
+-- thing; naming it once should not mean opening 105 sheets.
+countSimilarTransactions:
+SELECT COUNT(*) AS similar_count
+FROM transactions
+WHERE display_name = :display_name
+  AND amount_minor = :amount_minor
+  AND direction = :direction
+  AND (flags & 64) = 0        -- never touch a row the user already named
+  AND deleted_at IS NULL;
+
+renameSimilarTransactions:
+UPDATE transactions
+SET display_name = :new_name,
+    resolution_rung = 1,
+    confidence = 1.0,
+    flags = flags | 64,
+    updated_at = :updated_at
+WHERE display_name = :display_name
+  AND amount_minor = :amount_minor
+  AND direction = :direction
+  AND (flags & 64) = 0
+  AND deleted_at IS NULL;

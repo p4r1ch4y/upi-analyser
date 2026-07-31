@@ -208,4 +208,15 @@
     <string name="type_grotesque">Grotesque</string>
     <string name="type_serif">Serif</string>
     <string name="settings_typeface_note">Changes headings and the day total. Amounts keep their aligned figures either way.</string>
+
+    <!-- Search -->
+    <string name="search_placeholder">Search payments</string>
+    <string name="search_clear">Clear</string>
+    <string name="search_matches">%1$d matching</string>
+    <string name="search_no_matches">Nothing matches “%1$s”.</string>
+
+    <!-- Bulk rename -->
+    <string name="rename_similar">Also rename %1$d payments like this</string>
+    <string name="rename_similar_note">Same source and same amount — usually the same recurring thing.</string>
+    <string name="renamed_many">Renamed %1$d payments</string>
 </resources>

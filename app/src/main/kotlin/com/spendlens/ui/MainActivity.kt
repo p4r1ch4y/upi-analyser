@@ -140,6 +140,7 @@ class MainActivity : ComponentActivity() {
                 var showMoreSheet by remember { mutableStateOf(false) }
                 var showPrivacySheet by remember { mutableStateOf(false) }
                 var renameTarget by remember { mutableStateOf<String?>(null) }
+                var renameSimilarCount by remember { mutableStateOf(0) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
                 var openSources by remember { mutableStateOf<List<SourceRecord>>(emptyList()) }
@@ -193,7 +194,8 @@ class MainActivity : ComponentActivity() {
                                 onToggleDayExpanded = viewModel::toggleDay,
                                 onAdd = { showAddSheet = true },
                                 onImport = { showImportSheet = true },
-                                onMore = { showMoreSheet = true }
+                                onMore = { showMoreSheet = true },
+                                onQuery = viewModel::setQuery
                             ),
                             modifier = Modifier
                                 .fillMaxSize()
@@ -292,14 +294,19 @@ class MainActivity : ComponentActivity() {
 
                 } // CompositionLocalProvider
 
+                LaunchedEffect(renameTarget) {
+                    renameSimilarCount = renameTarget?.let { viewModel.similarCount(it) } ?: 0
+                }
+
                 renameTarget?.let { id ->
                     state.transaction(id)?.let { txn ->
                         RenameSheet(
                             currentName = txn.displayName,
                             counterpartyVpa = txn.counterpartyVpa,
+                            similarCount = renameSimilarCount,
                             onDismiss = { renameTarget = null },
-                            onConfirm = { newName ->
-                                viewModel.rename(id, newName)
+                            onConfirm = { newName, applyToSimilar ->
+                                viewModel.rename(id, newName, applyToSimilar)
                                 renameTarget = null
                                 dashboardViewModel.refresh()
                             }
@@ -503,6 +510,7 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
     DayStreamEvent.Copied -> getString(R.string.settings_copied)
     DayStreamEvent.Renamed -> getString(R.string.renamed)
+    is DayStreamEvent.RenamedMany -> getString(R.string.renamed_many, event.count)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

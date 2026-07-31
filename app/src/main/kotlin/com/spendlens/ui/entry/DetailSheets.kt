@@ -24,6 +24,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -691,13 +693,18 @@ private fun SheetButton(
 fun RenameSheet(
     currentName: String,
     counterpartyVpa: String?,
+    /** How many other unnamed payments share this label and amount. */
+    similarCount: Int,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (name: String, applyToSimilar: Boolean) -> Unit
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var name by remember { mutableStateOf(currentName) }
+    // Defaults on when there is a cluster: with hundreds of identical-looking
+    // bank rows, naming one at a time is the behaviour nobody wants.
+    var applyToSimilar by remember { mutableStateOf(similarCount > 0) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -734,8 +741,40 @@ fun RenameSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            if (similarCount > 0 && counterpartyVpa == null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { applyToSimilar = !applyToSimilar },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = stringResource(R.string.rename_similar, similarCount),
+                            style = typography.bodySmall,
+                            color = colors.ink
+                        )
+                        Text(
+                            text = stringResource(R.string.rename_similar_note),
+                            style = typography.labelSmall,
+                            color = colors.mist,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Switch(
+                        checked = applyToSimilar,
+                        onCheckedChange = { applyToSimilar = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = colors.paper,
+                            checkedTrackColor = colors.split
+                        )
+                    )
+                }
+            }
+
             Button(
-                onClick = { onConfirm(name.trim()) },
+                onClick = { onConfirm(name.trim(), applyToSimilar) },
                 enabled = name.isNotBlank() && name.trim() != currentName,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.ink,
