@@ -356,4 +356,4 @@ fun openSite(context: Context): Boolean {
 }
 
 const val DEVELOPER_EMAIL = "iamcsubrata@gmail.com"
-const val DEVELOPER_SITE = "https://p4r1ch4y.github.io/"
+const val DEVELOPER_SITE = "https://p4r1ch4y.github.io/SpendLens/"

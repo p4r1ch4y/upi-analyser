@@ -51,6 +51,22 @@ Unused dependencies were removed rather than left to be audited: `datastore`
 (which also dragged in a third native library) and `navigation-compose` were
 declared but never referenced.
 
+## OCR, and why it is not here yet
+
+Most UPI apps share a *screenshot* rather than text, so the share rail only
+catches the minority that share a receipt as text. Reading the screenshot needs
+OCR, and the choice is not free:
+
+| | Licence | Size | F-Droid |
+|---|---|---|---|
+| ML Kit text recognition | proprietary model | ~4 MB | **rejected** |
+| Tesseract (`tesseract4android`) | Apache-2.0 | ~20 MB with English data | acceptable |
+
+So the FOSS-compatible path exists but costs roughly twice the current APK, for a
+feature that is a convenience over typing four characters. Until that trade is
+made deliberately, a shared image opens manual entry with the receipt still on
+screen behind it — which is honest about what the app can and cannot read.
+
 ## Screenshots
 
 Seven, all from a clean install with invented data, in

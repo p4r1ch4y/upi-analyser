@@ -47,6 +47,7 @@ import com.spendlens.R
 import com.spendlens.SpendLensApp
 import com.spendlens.core.model.Split
 import com.spendlens.service.QuickNoteTile
+import com.spendlens.service.ShareReceiverActivity
 import com.spendlens.service.TransactionCaptureService
 import com.spendlens.service.UpiNotificationListener
 import com.spendlens.ui.dashboard.DashboardActions
@@ -155,8 +156,11 @@ class MainActivity : ComponentActivity() {
                 // the note can be typed while the user still remembers what it
                 // was for. Keyed on the intent so a second tap re-opens it.
                 LaunchedEffect(intentAction) {
-                    if (intentAction == QuickNoteTile.ACTION_NOTE_LATEST) {
-                        viewModel.mostRecentId()?.let { openTxnId = it }
+                    when (intentAction) {
+                        QuickNoteTile.ACTION_NOTE_LATEST ->
+                            viewModel.mostRecentId()?.let { openTxnId = it }
+                        TransactionCaptureService.ACTION_ADD_PAYMENT,
+                        ShareReceiverActivity.ACTION_ADD_FROM_IMAGE -> showAddSheet = true
                     }
                 }
                 var openSplit by remember { mutableStateOf<Split?>(null) }

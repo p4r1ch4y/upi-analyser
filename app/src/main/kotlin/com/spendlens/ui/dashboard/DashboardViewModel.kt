@@ -48,8 +48,23 @@ data class DashboardUiState(
     val slices: List<SpendSlice> = emptyList(),
     val paymentCount: Int = 0,
     val creditCount: Int = 0,
-    val hasTags: Boolean = false
+    val hasTags: Boolean = false,
+    /** The same span immediately before, for the comparison line. */
+    val previous: List<DayBucket> = emptyList()
 ) {
+    val change: SpendSeries.Change? get() = SpendSeries.changeVsPrevious(buckets, previous)
+    val spendFreeDays: Int get() = SpendSeries.spendFreeDays(buckets)
+    val averageOnSpendingDays: Long get() = SpendSeries.averageOnSpendingDays(buckets)
+
+    /**
+     * The single largest payment in the window.
+     *
+     * Separate from the biggest *day*: one ₹8,000 rent payment and a day of forty
+     * small ones look identical in a daily total and are completely different
+     * facts about how someone spends.
+     */
+    val biggestSlice: SpendSlice? get() = slices.maxByOrNull { it.amountMinor }
+
     val totalSpentMinor: Long get() = SpendSeries.totalSpentMinor(buckets)
     val totalReceivedMinor: Long get() = buckets.sumOf { it.receivedMinor }
     val netMinor: Long get() = SpendSeries.netMinor(buckets)
@@ -146,6 +161,15 @@ class DashboardViewModel(
         val events = annotations.spendPoints(since, until)
         val dir = if (q.direction == SpendDirection.EXPENSE) "DEBIT" else "CREDIT"
 
+        // The same span again, immediately before, so the headline can say which
+        // way things are going rather than just how much.
+        val prevEnd = start.minusDays(1)
+        val prevStart = prevEnd.minusDays(q.range.days - 1)
+        val prevEvents = annotations.spendPoints(
+            prevStart.atStartOfDay(zone).toInstant().toEpochMilli(),
+            since
+        )
+
         val slices = when (q.groupBy) {
             GroupBy.MERCHANT -> annotations.spendByMerchant(since, until, dir)
             GroupBy.TAG -> annotations.spendByTag(since, until, dir)
@@ -164,7 +188,8 @@ class DashboardViewModel(
             creditCount = events.count { it.isCredit },
             // Grouping by tag is only offered once something is tagged; an empty
             // report would otherwise look like a bug.
-            hasTags = annotations.spendByTag(since, until, dir).isNotEmpty()
+            hasTags = annotations.spendByTag(since, until, dir).isNotEmpty(),
+            previous = SpendSeries.byDay(prevEvents, from = prevStart, to = prevEnd, zone = zone)
         )
     }
 

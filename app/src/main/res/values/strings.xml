@@ -232,4 +232,14 @@
     <string name="share_already_known">Already in your ledger</string>
     <string name="share_unreadable">Could not read a payment in that</string>
     <string name="share_nothing">Nothing to add</string>
+
+    <!-- Ongoing notification actions -->
+    <string name="notif_action_add">Add payment</string>
+    <string name="notif_action_note">Note last</string>
+
+    <!-- Insights comparisons -->
+    <string name="dash_up_vs_previous">%1$d%% more than the period before · +%2$s</string>
+    <string name="dash_down_vs_previous">%1$d%% less than the period before · −%2$s</string>
+    <string name="dash_average_active">On days you spent</string>
+    <string name="dash_spend_free_days">Days you spent nothing</string>
 </resources>

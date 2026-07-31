@@ -12,6 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.spendlens.R
 import com.spendlens.SpendLensApp
+import com.spendlens.ui.MainActivity
 import com.spendlens.core.model.MoneyFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +85,34 @@ class TransactionCaptureService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setShowWhen(false)
+            // The ongoing notification is already the most reliably reachable
+            // surface this app has - it sits in the shade all day. Two actions
+            // there turn it from a status line into the fastest way to record a
+            // payment the rails could not see, which on this phone is every
+            // scan-and-pay that produces no notification of its own.
+            .addAction(
+                0,
+                getString(R.string.notif_action_add),
+                activityIntent(ACTION_ADD_PAYMENT, REQUEST_ADD)
+            )
+            .addAction(
+                0,
+                getString(R.string.notif_action_note),
+                activityIntent(QuickNoteTile.ACTION_NOTE_LATEST, REQUEST_NOTE)
+            )
             .build()
+    }
+
+    /** A tap that opens the app straight onto the thing the button names. */
+    private fun activityIntent(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            this.action = action
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        return PendingIntent.getActivity(
+            this, requestCode, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     private fun updateNotification(todayTotalMinor: Long) {
@@ -99,6 +127,11 @@ class TransactionCaptureService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1001
+        private const val REQUEST_ADD = 11
+        private const val REQUEST_NOTE = 12
+
+        /** Opens the manual-entry sheet directly from the shade. */
+        const val ACTION_ADD_PAYMENT = "com.spendlens.action.ADD_PAYMENT"
         private const val EXTRA_TODAY_TOTAL = "com.spendlens.extra.TODAY_TOTAL"
 
         fun start(context: Context) {

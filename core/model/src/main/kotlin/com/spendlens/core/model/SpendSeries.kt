@@ -79,6 +79,49 @@ object SpendSeries {
 
     fun busiestDay(buckets: List<DayBucket>): DayBucket? = buckets.maxByOrNull { it.spentMinor }
 
+    /**
+     * The same span, immediately before [buckets].
+     *
+     * A total on its own answers nothing: ₹8,000 this month is only news against
+     * what last month was. This is what turns the headline from a number into a
+     * direction.
+     */
+    fun changeVsPrevious(current: List<DayBucket>, previous: List<DayBucket>): Change? {
+        if (current.isEmpty() || previous.isEmpty()) return null
+        val now = totalSpentMinor(current)
+        val before = totalSpentMinor(previous)
+        if (before == 0L) return null
+        return Change(nowMinor = now, beforeMinor = before)
+    }
+
+    data class Change(val nowMinor: Long, val beforeMinor: Long) {
+        val deltaMinor: Long get() = nowMinor - beforeMinor
+        /** Signed fraction: 0.23 means 23% more than the period before. */
+        val fraction: Float get() = (deltaMinor.toDouble() / beforeMinor).toFloat()
+        val isUp: Boolean get() = deltaMinor > 0
+    }
+
+    /**
+     * Days with no spending at all.
+     *
+     * A number people recognise in their own behaviour far more readily than an
+     * average - "I spent nothing on 9 days this month" lands where "₹243/day"
+     * does not.
+     */
+    fun spendFreeDays(buckets: List<DayBucket>): Int = buckets.count { it.spentMinor == 0L }
+
+    /**
+     * Mean spend on the days money was actually spent.
+     *
+     * Reported *alongside* the all-days average rather than instead of it: the
+     * two answer different questions, and the gap between them is itself the
+     * interesting part.
+     */
+    fun averageOnSpendingDays(buckets: List<DayBucket>): Long {
+        val active = buckets.filter { it.spentMinor > 0L }
+        return if (active.isEmpty()) 0L else active.sumOf { it.spentMinor } / active.size
+    }
+
     /** Spent minus received. Can be negative in a month you were paid back. */
     fun netMinor(buckets: List<DayBucket>): Long =
         buckets.sumOf { it.spentMinor } - buckets.sumOf { it.receivedMinor }

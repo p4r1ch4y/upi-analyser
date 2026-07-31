@@ -125,6 +125,24 @@ fun DashboardScreen(
             color = colors.graphite
         )
 
+        // The comparison, immediately under the number it qualifies. A total on
+        // its own answers nothing - this is what makes it a judgement.
+        state.change?.let { change ->
+            val percent = kotlin.math.abs(change.fraction * 100).toInt()
+            Text(
+                text = stringResource(
+                    if (change.isUp) R.string.dash_up_vs_previous else R.string.dash_down_vs_previous,
+                    percent,
+                    money(kotlin.math.abs(change.deltaMinor))
+                ),
+                style = typography.bodySmall,
+                // Up is not automatically bad and down is not automatically good,
+                // so neither gets a success or warning colour - only emphasis.
+                color = if (change.isUp) colors.ink else colors.credit,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
         if (state.isEmpty) {
             ChartEmpty(stringResource(R.string.dash_nothing), Modifier.padding(top = 24.dp))
             Spacer(Modifier.navigationBarsPadding().height(80.dp))
@@ -142,6 +160,16 @@ fun DashboardScreen(
                 value = money(state.dailyAverageMinor),
                 caption = stringResource(R.string.dash_daily_average)
             )
+            StatTile(
+                value = money(state.averageOnSpendingDays),
+                caption = stringResource(R.string.dash_average_active)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
             state.busiestDay?.let { busiest ->
                 StatTile(
                     value = money(busiest.spentMinor),
@@ -149,6 +177,12 @@ fun DashboardScreen(
                         " · " + busiest.date.format(DAY_FORMAT)
                 )
             }
+            // People recognise this about themselves far more readily than an
+            // average: "nothing on 9 days" lands where "₹243/day" does not.
+            StatTile(
+                value = state.spendFreeDays.toString(),
+                caption = stringResource(R.string.dash_spend_free_days)
+            )
         }
 
         // ------------------------------------------------------------- by day

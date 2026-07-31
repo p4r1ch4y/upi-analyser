@@ -36,7 +36,25 @@ class ShareReceiverActivity : Activity() {
             else -> null
         }?.trim()
 
+        // Most UPI apps share a *screenshot*, not text. Reading one would need
+        // OCR, which is a real piece of work and a licensing decision (see
+        // fdroid/README.md). Until then the honest thing is to accept the share
+        // so the app appears in the sheet at all, and open the entry form with
+        // the receipt still on screen behind it — the user reads their own
+        // screenshot and types four characters.
         if (shared.isNullOrEmpty()) {
+            val hasImage = intent?.type?.startsWith("image/") == true ||
+                intent?.getParcelableExtra<android.os.Parcelable>(Intent.EXTRA_STREAM) != null
+            if (hasImage) {
+                startActivity(
+                    Intent(this, com.spendlens.ui.MainActivity::class.java).apply {
+                        action = ACTION_ADD_FROM_IMAGE
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }
+                )
+                finish()
+                return
+            }
             toastAndFinish(getString(R.string.share_nothing))
             return
         }
@@ -78,7 +96,10 @@ class ShareReceiverActivity : Activity() {
         finish()
     }
 
-    private companion object {
-        const val EXTRA_SOURCE_PACKAGE = "source_package"
+    companion object {
+        private const val EXTRA_SOURCE_PACKAGE = "source_package"
+
+        /** A shared screenshot: open manual entry rather than pretend to read it. */
+        const val ACTION_ADD_FROM_IMAGE = "com.spendlens.action.ADD_FROM_IMAGE"
     }
 }

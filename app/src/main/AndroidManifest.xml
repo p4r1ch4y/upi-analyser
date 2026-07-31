@@ -128,6 +128,17 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!--
+              Images too. Most UPI apps share a screenshot rather than text, and
+              without this SpendLens never appears in their share sheet at all.
+              The screenshot is not read - it opens manual entry with the receipt
+              still behind it.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
         </activity>
 
         <!--
