@@ -204,9 +204,23 @@ private fun readPermissions(context: Context): List<PermissionFact> {
     val declared = info.requestedPermissions.orEmpty()
     val flags = info.requestedPermissionsFlags
 
+    // Notification access is not a runtime grant — it is a signature permission
+    // on the service plus a separate toggle in Settings, so the package manager
+    // reports it "not granted" even while the app is actively reading
+    // notifications. On a panel whose whole purpose is accuracy, that reading
+    // would be a lie of exactly the kind it exists to prevent.
+    val listenerEnabled = runCatching {
+        androidx.core.app.NotificationManagerCompat
+            .getEnabledListenerPackages(context)
+            .contains(context.packageName)
+    }.getOrDefault(false)
+
     return declared.mapIndexed { index, name ->
-        val granted = flags != null && index < flags.size &&
-            (flags[index] and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+        val granted = when (name) {
+            "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" -> listenerEnabled
+            else -> flags != null && index < flags.size &&
+                (flags[index] and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED) != 0
+        }
         PermissionFact(
             name = name,
             label = friendlyName(name),

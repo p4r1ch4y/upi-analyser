@@ -87,7 +87,17 @@ data class TransactionTemplate(
      * "Rs. 419.00 will be credited". Without a veto those become phantom
      * transactions, which is worse than missing a real one.
      */
-    val veto: Regex? = null
+    val veto: Regex? = null,
+    /**
+     * Marks a payment that was attempted and did not go through.
+     *
+     * Deliberately separate from [veto]. A veto means "no payment is being
+     * described here" - an intention, a request, a bill reminder - and those
+     * should never enter the ledger. A failure means a payment genuinely was
+     * attempted and the money did not move, which the user saw their bank
+     * announce. That belongs in the ledger, visibly not counted.
+     */
+    val failureMarker: Regex? = null
 ) {
     fun routes(input: ParserInput): Boolean = when (input.source) {
         Source.NOTIFICATION -> input.packageName != null && input.packageName in packageNames
@@ -109,7 +119,14 @@ data class TransactionTemplate(
 
     fun extract(input: ParserInput): RawTxn? {
         val text = input.title?.let { "$it ${input.body}" } ?: input.body
-        if (veto?.containsMatchIn(text) == true) return null
+
+        // A stated failure outranks the veto, and deliberately so: a failure
+        // notice usually contains future-tense wording *because* it failed —
+        // "Payment of ₹349 has failed. Any amount debited will be refunded."
+        // Letting the veto win there would reject a real, attempted payment as
+        // if it were a mere intention, and the user would see nothing at all.
+        val isFailure = failureMarker?.containsMatchIn(text) == true
+        if (!isFailure && veto?.containsMatchIn(text) == true) return null
 
         val match = pattern.find(text) ?: return null
 
@@ -147,6 +164,7 @@ data class TransactionTemplate(
             templateId = id,
             bodyHash = dedupeHash(text, input.timestamp),
             institution = MessageFacts.institution(text),
+            failed = isFailure,
             // The body alone, not the title-prefixed text the patterns run
             // against - this is shown to the user, so it should read exactly as
             // it did in their notification shade or inbox.
@@ -306,6 +324,42 @@ object BuiltInTemplates {
 
     private const val REF = """(?:UPI\s*)?(?:Ref(?:erence)?|RRN|txn(?:\s*id)?)(?:\s*No)?\.?[:\s#]*(?<rrn>\d{6,})"""
 
+    /**
+     * Money that has not actually moved.
+     *
+     * Banks announce intentions, failures and bills in the same grammar as
+     * completed payments - "INR 605.00 will be debited from your account",
+     * "Payment of Rs. 349.0 has failed", "Rs. 419.00 will be credited",
+     * "Total amount payable: Rs. 706.82". A phantom transaction is worse than a
+     * missed one, because the user cannot tell it is wrong without opening their
+     * bank app.
+     */
+    // Declared before any template that references them. Kotlin initialises an
+    // object's properties top to bottom, so a regex declared below the templates
+    // is still null while they are being constructed - which silently left every
+    // notification template with no veto and no failure marker at all, with
+    // nothing at compile time to say so.
+    private val NOT_A_TRANSACTION = Regex(
+        """\b(?:will\s+be\s+(?:debited|credited|refunded)|has\s+requested|requested\s+money""" +
+            """|is\s+due\s+for\s+payment|amount\s+payable|refund\s+for\s+.{0,20}initiated""" +
+            """|if\s+debited)\b""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
+    /**
+     * A payment that was attempted and did not go through.
+     *
+     * Previously these were vetoed alongside intentions, which meant a failed
+     * payment simply never appeared - indistinguishable, to the user, from the
+     * app having missed it. They are now captured and struck through instead.
+     */
+    private val FAILED_PAYMENT = Regex(
+        """\b(?:has\s+failed|payment\s+failed|failed\s+for|transaction\s+(?:has\s+)?failed""" +
+            """|declined|unsuccessful|not\s+successful|reversed|has\s+been\s+reversed""" +
+            """|could\s+not\s+be\s+(?:processed|completed))\b""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
     private val NOTIF = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     private val SMS = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
 
@@ -341,7 +395,12 @@ object BuiltInTemplates {
         packageNames = upiPackages,
         pattern = Regex(pattern, NOTIF),
         direction = direction,
-        channel = Channel.UPI
+        channel = Channel.UPI,
+        // Notification templates had no veto at all, so a payment app announcing
+        // "payment failed" was recorded as a completed payment and counted in the
+        // day's total. Found in real use.
+        veto = NOT_A_TRANSACTION,
+        failureMarker = FAILED_PAYMENT
     )
 
     // ------------------------------------------------------- NPCI sentence shapes
@@ -504,22 +563,7 @@ object BuiltInTemplates {
         "BHIMAP", "SRIRAM"
     )
 
-    /**
-     * Money that has not actually moved.
-     *
-     * Banks announce intentions, failures and bills in the same grammar as
-     * completed payments - "INR 605.00 will be debited from your account",
-     * "Payment of Rs. 349.0 has failed", "Rs. 419.00 will be credited",
-     * "Total amount payable: Rs. 706.82". A phantom transaction is worse than a
-     * missed one, because the user cannot tell it is wrong without opening their
-     * bank app.
-     */
-    private val NOT_A_TRANSACTION = Regex(
-        """\b(?:will\s+be\s+(?:debited|credited|refunded)|has\s+failed|failed\s+for""" +
-            """|has\s+requested|requested\s+money|is\s+due\s+for\s+payment|amount\s+payable""" +
-            """|refund\s+for\s+.{0,20}initiated|if\s+debited)\b""",
-        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
-    )
+
 
     private fun bankSms(id: String, pattern: String, direction: Direction, channel: Channel = Channel.UPI) =
         TransactionTemplate(
@@ -529,7 +573,8 @@ object BuiltInTemplates {
             pattern = Regex(pattern, SMS),
             direction = direction,
             channel = channel,
-            veto = NOT_A_TRANSACTION
+            veto = NOT_A_TRANSACTION,
+            failureMarker = FAILED_PAYMENT
         )
 
     // ------------------------------------------------------------- SMS: debits

@@ -293,7 +293,8 @@ FROM transactions
 WHERE occurred_at >= :dayStart
   AND occurred_at < :dayEnd
   AND direction = 'DEBIT'
-  AND (flags & 8) = 0  -- Exclude FLAG_EXCLUDED
+  AND (flags & 8) = 0    -- FLAG_EXCLUDED
+  AND (flags & 128) = 0  -- FLAG_FAILED: attempted, but the money never moved
   AND deleted_at IS NULL;
 
 selectDayStats:
@@ -405,6 +406,7 @@ FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
 GROUP BY t.display_name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -417,6 +419,7 @@ FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
 GROUP BY label
 ORDER BY effective_minor DESC;
 
@@ -430,6 +433,7 @@ JOIN tags tg ON tg.id = tt.tag_id
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
 GROUP BY tg.name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -445,6 +449,7 @@ FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
 ORDER BY t.occurred_at;
 
 -- One-off label repair -------------------------------------------------------

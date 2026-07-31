@@ -50,9 +50,13 @@ import java.util.Locale
 @Composable
 fun MoreSheet(
     currency: String,
+    themeMode: String,
+    typeface: String,
     exporting: Boolean,
     onDismiss: () -> Unit,
     onCurrency: (String) -> Unit,
+    onThemeMode: (String) -> Unit,
+    onTypeface: (String) -> Unit,
     onExport: (includeSourceMessages: Boolean) -> Unit,
     onFeedback: () -> Unit,
     onPrivacy: () -> Unit,
@@ -94,6 +98,41 @@ fun MoreSheet(
                     )
                 }
             }
+
+            // ----------------------------------------------------- appearance
+            SectionLabel(stringResource(R.string.settings_appearance), top = 26.dp)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(stringResource(R.string.theme_system), themeMode == SettingsStore.THEME_SYSTEM) {
+                    onThemeMode(SettingsStore.THEME_SYSTEM)
+                }
+                OptionChip(stringResource(R.string.theme_light), themeMode == SettingsStore.THEME_LIGHT) {
+                    onThemeMode(SettingsStore.THEME_LIGHT)
+                }
+                OptionChip(stringResource(R.string.theme_dark), themeMode == SettingsStore.THEME_DARK) {
+                    onThemeMode(SettingsStore.THEME_DARK)
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_typeface),
+                style = typography.bodySmall,
+                color = colors.graphite,
+                modifier = Modifier.padding(top = 14.dp, bottom = 6.dp)
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OptionChip(stringResource(R.string.type_grotesque), typeface == SettingsStore.TYPE_GROTESQUE) {
+                    onTypeface(SettingsStore.TYPE_GROTESQUE)
+                }
+                OptionChip(stringResource(R.string.type_serif), typeface == SettingsStore.TYPE_SERIF) {
+                    onTypeface(SettingsStore.TYPE_SERIF)
+                }
+            }
+            Text(
+                text = stringResource(R.string.settings_typeface_note),
+                style = typography.labelSmall,
+                color = colors.mist,
+                modifier = Modifier.padding(top = 6.dp)
+            )
 
             // -------------------------------------------------------- privacy
             // First, not buried at the bottom: "can this app see my bank
@@ -204,6 +243,20 @@ private fun SectionLabel(text: String, top: androidx.compose.ui.unit.Dp = 8.dp) 
         style = MaterialTheme.typography.labelSmall,
         color = SpendTheme.colors.graphite,
         modifier = Modifier.padding(top = top, bottom = 6.dp)
+    )
+}
+
+@Composable
+private fun OptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = SpendTheme.colors
+    Text(
+        text = label,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (selected) colors.paper else colors.ink,
+        modifier = Modifier
+            .background(if (selected) colors.ink else colors.paperSunk, RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     )
 }
 

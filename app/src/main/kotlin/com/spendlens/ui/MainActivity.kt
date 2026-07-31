@@ -119,7 +119,11 @@ class MainActivity : ComponentActivity() {
         requestPostNotificationsIfNeeded()
 
         setContent {
-            SpendLensTheme {
+            // Collected before the theme so a change repaints everything.
+            val themeMode by viewModel.themeMode.collectAsState()
+            val typeface by viewModel.typeface.collectAsState()
+
+            SpendLensTheme(themeMode = themeMode, typeface = typeface) {
                 val state by viewModel.state.collectAsState()
                 val dashboard by dashboardViewModel.state.collectAsState()
                 // Collected so a currency change redraws every amount on screen.
@@ -316,12 +320,16 @@ class MainActivity : ComponentActivity() {
                 if (showMoreSheet) {
                     MoreSheet(
                         currency = currency,
+                        themeMode = themeMode,
+                        typeface = typeface,
                         exporting = exporting,
                         onDismiss = { showMoreSheet = false },
                         onCurrency = {
                             viewModel.setCurrency(it)
                             dashboardViewModel.refresh()
                         },
+                        onThemeMode = viewModel::setThemeMode,
+                        onTypeface = viewModel::setTypeface,
                         onExport = { includeSources ->
                             exportIncludesSources = includeSources
                             showMoreSheet = false

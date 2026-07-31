@@ -45,6 +45,8 @@ data class TxnUi(
     val currency: String,
     val isCredit: Boolean,
     val needsReview: Boolean,
+    /** Attempted and did not go through. Shown, never counted. */
+    val failed: Boolean = false,
     val counterpartyVpa: String?,
     val split: SplitSummary? = null,
     val tags: List<TagRef> = emptyList()
@@ -143,6 +145,22 @@ class DayStreamViewModel(
      */
     private val _currency = MutableStateFlow(settings.currency)
     val currency: StateFlow<String> = _currency.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(settings.themeMode)
+    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
+
+    private val _typeface = MutableStateFlow(settings.typeface)
+    val typeface: StateFlow<String> = _typeface.asStateFlow()
+
+    fun setThemeMode(value: String) {
+        settings.themeMode = value
+        _themeMode.value = value
+    }
+
+    fun setTypeface(value: String) {
+        settings.typeface = value
+        _typeface.value = value
+    }
 
     private val _exporting = MutableStateFlow(false)
     val exporting: StateFlow<Boolean> = _exporting.asStateFlow()
@@ -449,7 +467,9 @@ class DayStreamViewModel(
             val transactions = byDate[date].orEmpty().sortedBy { it.occurredAt }
             DayUi(
                 date = date,
-                spentMinor = transactions.filter { !it.isCredit }.sumOf { it.effectiveMinor },
+                spentMinor = transactions
+                    .filter { !it.isCredit && !it.failed }
+                    .sumOf { it.effectiveMinor },
                 transactions = transactions
             )
         }
@@ -489,7 +509,7 @@ class DayStreamViewModel(
             name = trip.name,
             dayIndex = dayIndex,
             dayCount = dayCount,
-            spentMinor = transactions.filter { !it.isCredit }.sumOf { it.effectiveMinor }
+            spentMinor = transactions.filter { !it.isCredit && !it.failed }.sumOf { it.effectiveMinor }
         )
     }
 
@@ -501,6 +521,7 @@ class DayStreamViewModel(
         currency = currency,
         isCredit = direction == Direction.CREDIT.name,
         needsReview = (flags and FusedTxn.FLAG_NEEDS_REVIEW.toLong()) != 0L,
+        failed = (flags and FusedTxn.FLAG_FAILED.toLong()) != 0L,
         counterpartyVpa = counterparty_vpa,
         split = split,
         tags = tags

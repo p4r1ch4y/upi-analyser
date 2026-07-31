@@ -42,9 +42,21 @@ private val DarkColorScheme = darkColorScheme(
 
 @Composable
 fun SpendLensTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    /** SYSTEM, LIGHT or DARK — see SettingsStore.THEME_MODES. */
+    themeMode: String = "SYSTEM",
+    /** GROTESQUE or SERIF — see SettingsStore.TYPEFACES. */
+    typeface: String = "GROTESQUE",
     content: @Composable () -> Unit
 ) {
+    // An explicit choice overrides the system; SYSTEM follows it. Following the
+    // system is the default because a money app that ignores the phone's night
+    // setting is the one glaring white rectangle at 2am.
+    val darkTheme = when (themeMode) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> isSystemInDarkTheme()
+    }
+    val typography = if (typeface == "SERIF") SpendTypography.withSerifDisplay() else SpendTypography
     val spendColors = if (darkTheme) DarkSpendColors else LightSpendColors
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
@@ -64,7 +76,7 @@ fun SpendLensTheme(
     CompositionLocalProvider(LocalSpendColors provides spendColors) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = SpendTypography,
+            typography = typography,
             content = content
         )
     }

@@ -195,4 +195,17 @@
     <string name="rename_field">Name</string>
     <string name="action_rename">Rename</string>
     <string name="renamed">Renamed</string>
+
+    <!-- Failed payments -->
+    <string name="failed_not_counted">Failed · not counted</string>
+
+    <!-- Appearance -->
+    <string name="settings_appearance">Appearance</string>
+    <string name="theme_system">Follow system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="settings_typeface">Typeface</string>
+    <string name="type_grotesque">Grotesque</string>
+    <string name="type_serif">Serif</string>
+    <string name="settings_typeface_note">Changes headings and the day total. Amounts keep their aligned figures either way.</string>
 </resources>

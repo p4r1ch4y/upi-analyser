@@ -109,3 +109,26 @@ val SpendTypography = Typography(
 fun TextStyle.withTabularFigures() = this.copy(
     fontFeatureSettings = "tnum"
 )
+
+/**
+ * A serif display voice, offered as an alternative.
+ *
+ * Uses the platform's own serif rather than bundling another family: it costs
+ * nothing in APK size, it is already hinted for the device, and it gives the
+ * editorial feel the suggestion was after without shipping a second megabyte of
+ * font for a preference most people will never change.
+ *
+ * Applied to display and title text only. Amounts and transaction rows keep the
+ * body face and its tabular figures — a serif with high thick/thin contrast is
+ * lovely in a headline and genuinely worse in a dense column of numbers, which is
+ * most of what this app is.
+ */
+val SerifDisplay = FontFamily.Serif
+
+/** Swaps the display faces while leaving body text and figures alone. */
+fun androidx.compose.material3.Typography.withSerifDisplay(): androidx.compose.material3.Typography = copy(
+    displayLarge = displayLarge.copy(fontFamily = SerifDisplay),
+    displayMedium = displayMedium.copy(fontFamily = SerifDisplay),
+    displaySmall = displaySmall.copy(fontFamily = SerifDisplay),
+    titleLarge = titleLarge.copy(fontFamily = SerifDisplay)
+)

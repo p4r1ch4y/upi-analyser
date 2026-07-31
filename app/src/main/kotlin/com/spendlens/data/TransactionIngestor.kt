@@ -83,7 +83,9 @@ class TransactionIngestor(
             return Result.Merged(existing.id, displayName, existing.amount_minor)
         }
 
-        val flags = if (resolution.needsReview()) FusedTxn.FLAG_NEEDS_REVIEW else 0
+        var flags = if (resolution.needsReview()) FusedTxn.FLAG_NEEDS_REVIEW else 0
+        // Kept, but never counted. See FusedTxn.FLAG_FAILED.
+        if (raw.failed) flags = flags or FusedTxn.FLAG_FAILED
 
         val txn = FusedTxn(
             id = TxnId.generate(timestamp),

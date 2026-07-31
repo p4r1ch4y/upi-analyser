@@ -138,7 +138,7 @@ fun DayStreamScreen(
 
                 TapBar(
                     transactions = today?.transactions
-                        ?.filter { !it.isCredit }
+                        ?.filter { !it.isCredit && !it.failed }
                         ?.map { TapBarItem(it.effectiveMinor) }
                         .orEmpty(),
                     modifier = Modifier.padding(top = 14.dp)
@@ -359,6 +359,15 @@ private fun StreamRow(
                 modifier = Modifier
                     .padding(start = 62.dp, bottom = 8.dp)
                     .clickable { actions.onNameMerchant(vpa) }
+            )
+        }
+
+        if (txn.failed) {
+            Text(
+                text = stringResource(R.string.failed_not_counted),
+                style = typography.bodySmall,
+                color = colors.review,
+                modifier = Modifier.padding(start = 62.dp, bottom = 9.dp)
             )
         }
 

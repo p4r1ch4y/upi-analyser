@@ -39,7 +39,9 @@ data class RawTxn(
      * Payments Bank ••2793" tells the user something true, where a bare
      * "Bank message" tells them nothing.
      */
-    val institution: String? = null
+    val institution: String? = null,
+    /** The message says this payment failed, was declined, or was reversed. */
+    val failed: Boolean = false
 ) {
     /** Truncated hash for display */
     fun shortHash(): String = bodyHash.take(12)
@@ -78,6 +80,19 @@ data class FusedTxn(
         const val FLAG_SPLIT = 16
         const val FLAG_NEEDS_REVIEW = 32
         const val FLAG_MANUAL_EDIT = 64
+
+        /**
+         * The payment was attempted and did not go through - declined, failed,
+         * or reversed.
+         *
+         * Kept in the ledger rather than dropped, and excluded from every total.
+         * Dropping it silently is the tidier implementation but the worse
+         * product: the user saw their bank say something happened, and an app
+         * that shows nothing looks like it missed the payment. Showing it struck
+         * through says "seen, and deliberately not counted", which is the only
+         * version that survives being checked.
+         */
+        const val FLAG_FAILED = 128
     }
 
     fun hasFlag(flag: Int): Boolean = (flags and flag) != 0

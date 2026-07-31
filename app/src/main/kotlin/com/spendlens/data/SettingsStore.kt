@@ -29,6 +29,28 @@ class SettingsStore(context: Context) {
             MoneyFormat.displayCurrency = value
         }
 
+    /**
+     * Light, dark, or whatever the system is set to.
+     *
+     * Defaults to following the system, because a money app that ignores the
+     * phone's night setting is the one glaring white rectangle at 2am.
+     */
+    var themeMode: String
+        get() = prefs.getString(KEY_THEME, THEME_SYSTEM) ?: THEME_SYSTEM
+        set(value) = prefs.edit().putString(KEY_THEME, value).apply()
+
+    /**
+     * Which typeface set the app renders in.
+     *
+     * Only affects display text — headings, the day total, section labels. The
+     * transaction rows keep their tabular figures whatever is chosen, because a
+     * column of amounts that does not align is harder to read regardless of how
+     * handsome the face is.
+     */
+    var typeface: String
+        get() = prefs.getString(KEY_TYPEFACE, TYPE_GROTESQUE) ?: TYPE_GROTESQUE
+        set(value) = prefs.edit().putString(KEY_TYPEFACE, value).apply()
+
     /** Pushes the stored preference into the formatter at startup. */
     fun applyToFormatter() {
         MoneyFormat.displayCurrency = currency
@@ -36,6 +58,19 @@ class SettingsStore(context: Context) {
 
     companion object {
         private const val KEY_CURRENCY = "currency"
+        private const val KEY_THEME = "theme_mode"
+        private const val KEY_TYPEFACE = "typeface"
+
+        const val THEME_SYSTEM = "SYSTEM"
+        const val THEME_LIGHT = "LIGHT"
+        const val THEME_DARK = "DARK"
+        val THEME_MODES = listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK)
+
+        /** The current voice: a compact grotesque. */
+        const val TYPE_GROTESQUE = "GROTESQUE"
+        /** A high-contrast serif for display text, editorial in feel. */
+        const val TYPE_SERIF = "SERIF"
+        val TYPEFACES = listOf(TYPE_GROTESQUE, TYPE_SERIF)
         const val DEFAULT_CURRENCY = "INR"
 
         /**
