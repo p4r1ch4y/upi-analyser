@@ -7,6 +7,8 @@ import android.content.Context
 import com.spendlens.core.database.SpendLensDatabase
 import com.spendlens.core.database.SpendLensDatabaseFactory
 import com.spendlens.core.parser.BuiltInTemplates
+import com.spendlens.core.model.Source
+import com.spendlens.core.parser.ParserInput
 import com.spendlens.core.parser.TemplateParser
 import com.spendlens.core.resolution.MerchantResolver
 import com.spendlens.data.CsvStatementImporter
@@ -55,6 +57,10 @@ class SpendLensApp : Application() {
             // resolution ladder does nothing for rows already in the ledger.
             // Idempotent, so it costs one no-op statement per launch thereafter.
             runCatching { graph.repository.repairLabels() }
+            // Every parser improvement is retroactive, because the message each
+            // row was read from is stored beside it. Only labels change here -
+            // never an amount, a direction or a date.
+            runCatching { graph.relabelStoredRows() }
         }
     }
 
@@ -112,6 +118,32 @@ class SpendLensApp : Application() {
         val settings: SettingsStore by lazy { SettingsStore(context) }
 
         val csvExporter: CsvExporter by lazy { CsvExporter(context, repository, annotations) }
+
+        /**
+         * Asks the current parser to re-read every placeholder-labelled row.
+         *
+         * Lives on the graph because it needs the parser and the resolver
+         * together, which is the same pairing the live capture path uses - so a
+         * re-parse produces exactly the label a fresh capture would.
+         */
+        suspend fun relabelStoredRows(): Int {
+            val resolver = MerchantResolver()
+            val rules = repository.userRules()
+            return repository.relabelFromSources(labelOf = { record ->
+                val source = runCatching { Source.valueOf(record.source) }.getOrNull()
+                    ?: return@relabelFromSources null
+                val raw = parser.parse(
+                    ParserInput(
+                        source = source,
+                        packageName = record.origin?.takeIf { source == Source.NOTIFICATION },
+                        sender = record.origin?.takeIf { source == Source.SMS },
+                        body = record.body,
+                        timestamp = record.receivedAt
+                    )
+                ) ?: return@relabelFromSources null
+                resolver.resolve(raw, userRules = rules).displayName
+            })
+        }
 
         suspend fun todayTotalMinor(): Long {
             val start = Days.startOfToday()

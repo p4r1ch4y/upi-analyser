@@ -54,6 +54,8 @@ import com.spendlens.ui.dashboard.DashboardViewModel
 import com.spendlens.ui.entry.AddTransactionSheet
 import com.spendlens.ui.entry.ImportSheet
 import com.spendlens.ui.entry.MoreSheet
+import com.spendlens.ui.entry.PrivacySheet
+import com.spendlens.ui.entry.RenameSheet
 import com.spendlens.ui.entry.DEVELOPER_EMAIL
 import com.spendlens.ui.entry.openSite
 import com.spendlens.ui.entry.sendFeedback
@@ -132,6 +134,8 @@ class MainActivity : ComponentActivity() {
                 var showSplitSheet by remember { mutableStateOf(false) }
                 var showTagSheet by remember { mutableStateOf(false) }
                 var showMoreSheet by remember { mutableStateOf(false) }
+                var showPrivacySheet by remember { mutableStateOf(false) }
+                var renameTarget by remember { mutableStateOf<String?>(null) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
                 var openSources by remember { mutableStateOf<List<SourceRecord>>(emptyList()) }
@@ -248,7 +252,8 @@ class MainActivity : ComponentActivity() {
                             onDelete = {
                                 viewModel.delete(id)
                                 openTxnId = null
-                            }
+                            },
+                            onRename = { renameTarget = id }
                         )
                     }
                 }
@@ -283,6 +288,31 @@ class MainActivity : ComponentActivity() {
 
                 } // CompositionLocalProvider
 
+                renameTarget?.let { id ->
+                    state.transaction(id)?.let { txn ->
+                        RenameSheet(
+                            currentName = txn.displayName,
+                            counterpartyVpa = txn.counterpartyVpa,
+                            onDismiss = { renameTarget = null },
+                            onConfirm = { newName ->
+                                viewModel.rename(id, newName)
+                                renameTarget = null
+                                dashboardViewModel.refresh()
+                            }
+                        )
+                    }
+                }
+
+                if (showPrivacySheet) {
+                    PrivacySheet(
+                        onDismiss = { showPrivacySheet = false },
+                        onCopyCommand = {
+                            copyToClipboard(it)
+                            viewModel.reportCopied()
+                        }
+                    )
+                }
+
                 if (showMoreSheet) {
                     MoreSheet(
                         currency = currency,
@@ -306,6 +336,10 @@ class MainActivity : ComponentActivity() {
                             if (!sendFeedback(this)) viewModel.reportNoEmailApp()
                         },
                         onOpenSite = { if (!openSite(this)) viewModel.reportNoBrowser() },
+                        onPrivacy = {
+                            showMoreSheet = false
+                            showPrivacySheet = true
+                        },
                         onCopyEmail = {
                             copyToClipboard(DEVELOPER_EMAIL)
                             viewModel.reportCopied()
@@ -460,6 +494,7 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.NoEmailApp -> getString(R.string.settings_no_email_app)
     DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
     DayStreamEvent.Copied -> getString(R.string.settings_copied)
+    DayStreamEvent.Renamed -> getString(R.string.renamed)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

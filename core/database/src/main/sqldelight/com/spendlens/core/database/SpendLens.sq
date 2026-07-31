@@ -489,3 +489,32 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 
 deleteSourceMessagesFor:
 DELETE FROM source_messages WHERE txn_id = :txnId;
+
+-- Rename one transaction. Used when the message named no payee and only the user
+-- can say what it was, so there is no rule to replay - just this row.
+renameTransaction:
+UPDATE transactions
+SET display_name = :display_name,
+    resolution_rung = 1,
+    confidence = 1.0,
+    flags = flags | 64,          -- FLAG_MANUAL_EDIT
+    updated_at = :updated_at
+WHERE id = :id;
+
+-- Rows whose label is a generic placeholder, but whose source message names the
+-- bank that moved the money. Display names are resolved once and stored, so
+-- teaching the resolver to read the institution does nothing for the 82% of rows
+-- already sitting in the ledger saying "Bank message".
+selectRelabelCandidates:
+SELECT t.id, t.display_name, s.source, s.origin, s.body, s.received_at
+FROM transactions t
+JOIN source_messages s ON s.txn_id = t.id
+WHERE t.display_name IN ('Bank message', 'Payment', 'Statement entry')
+  AND (t.flags & 64) = 0        -- never overwrite a name the user chose
+  AND t.deleted_at IS NULL
+GROUP BY t.id;
+
+relabelTransaction:
+UPDATE transactions
+SET display_name = :display_name, updated_at = :updated_at
+WHERE id = :id AND (flags & 64) = 0;

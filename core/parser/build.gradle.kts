@@ -18,6 +18,7 @@ tasks.withType<Test>().configureEach {
     // Opt-in corpus harness (see CorpusHarness). Absent by default, so the
     // harness skips and no personal data is ever needed to build or test.
     System.getProperty("spendlens.corpus")?.let { systemProperty("spendlens.corpus", it) }
+    System.getProperty("spendlens.ledger")?.let { systemProperty("spendlens.ledger", it) }
     testLogging { showStandardStreams = true }
 }
 

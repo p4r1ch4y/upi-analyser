@@ -115,6 +115,7 @@ sealed interface DayStreamEvent {
     data object NoEmailApp : DayStreamEvent
     data object NoBrowser : DayStreamEvent
     data object Copied : DayStreamEvent
+    data object Renamed : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
     data object ListenerNotConnected : DayStreamEvent
@@ -348,6 +349,23 @@ class DayStreamViewModel(
 
     fun nameMerchant(vpa: String, displayName: String) {
         viewModelScope.launch { repository.nameMerchant(vpa, displayName) }
+    }
+
+    /**
+     * Renames a payment.
+     *
+     * With a VPA this writes a rule that is replayed over every payment to the
+     * same address; without one there is nothing to generalise from, so only this
+     * row changes. Most bank SMS falls in the second case.
+     */
+    fun rename(txnId: String, displayName: String) {
+        val txn = state.value.transaction(txnId)
+        viewModelScope.launch {
+            val vpa = txn?.counterpartyVpa
+            if (vpa != null) repository.nameMerchant(vpa, displayName)
+            else repository.rename(txnId, displayName)
+            _events.send(DayStreamEvent.Renamed)
+        }
     }
 
     fun delete(id: String) {

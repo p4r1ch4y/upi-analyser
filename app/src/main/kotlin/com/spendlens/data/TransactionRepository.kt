@@ -228,11 +228,66 @@ class TransactionRepository(
         }
     }
 
+    /**
+     * Renames one payment.
+     *
+     * Where the payment carries a VPA, [nameMerchant] is better - it writes a rule
+     * and replays it over every past and future payment to the same address. But
+     * most bank SMS carries no VPA and no payee at all, so for those there is
+     * nothing to make a rule out of and this row is all the user can fix.
+     */
+    suspend fun rename(id: String, displayName: String, now: Long = System.currentTimeMillis()) =
+        withContext(io) {
+            queries.renameTransaction(display_name = displayName, updated_at = now, id = id)
+        }
+
+    /**
+     * Re-reads stored source messages with the *current* parser and relabels
+     * rows that still carry a placeholder.
+     *
+     * Display names are resolved once and written, so every improvement to the
+     * templates or the resolution ladder used to help only payments captured
+     * afterwards - the ledger kept whatever it was told the first time. Because
+     * the original message is now stored beside each row, the app can simply ask
+     * again. A template added today retroactively names a payment from March.
+     *
+     * Deliberately narrow about what it will touch:
+     *  - only rows whose label is still a generic placeholder,
+     *  - never a row the user has renamed (FLAG_MANUAL_EDIT),
+     *  - only the label. Amount, direction and date are left exactly as they
+     *    were, so a re-parse can never move money or shift a day's total.
+     */
+    suspend fun relabelFromSources(
+        labelOf: (SourceRecordRow) -> String?,
+        now: Long = System.currentTimeMillis()
+    ): Int = withContext(io) {
+        val candidates = queries.selectRelabelCandidates().executeAsList()
+        var changed = 0
+        database.transaction {
+            for (row in candidates) {
+                val label = labelOf(
+                    SourceRecordRow(row.source, row.origin, row.body, row.received_at)
+                )?.takeIf { it.isNotBlank() && it != row.display_name } ?: continue
+                queries.relabelTransaction(display_name = label, updated_at = now, id = row.id)
+                changed++
+            }
+        }
+        changed
+    }
+
     /** Dedupe hashes are only useful for as long as a replay is plausible. */
     suspend fun pruneHashesOlderThan(cutoff: Long) = withContext(io) {
         queries.pruneOldHashes(cutoff)
     }
 }
+
+/** A stored source message, as the re-parse pass sees it. */
+data class SourceRecordRow(
+    val source: String,
+    val origin: String?,
+    val body: String,
+    val receivedAt: Long
+)
 
 /** True when the row still needs a human to say what it is. */
 fun Transactions.needsReview(): Boolean =

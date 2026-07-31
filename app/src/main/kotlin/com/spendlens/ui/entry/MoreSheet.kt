@@ -55,6 +55,7 @@ fun MoreSheet(
     onCurrency: (String) -> Unit,
     onExport: (includeSourceMessages: Boolean) -> Unit,
     onFeedback: () -> Unit,
+    onPrivacy: () -> Unit,
     onOpenSite: () -> Unit,
     onCopyEmail: () -> Unit
 ) {
@@ -93,6 +94,16 @@ fun MoreSheet(
                     )
                 }
             }
+
+            // -------------------------------------------------------- privacy
+            // First, not buried at the bottom: "can this app see my bank
+            // messages and phone home with them" is the question a new user
+            // actually has, and the answer is the product.
+            SectionLabel(stringResource(R.string.settings_privacy), top = 26.dp)
+            ActionRow(
+                text = stringResource(R.string.settings_privacy_action),
+                onClick = onPrivacy
+            )
 
             // --------------------------------------------------------- export
             SectionLabel(stringResource(R.string.settings_export), top = 26.dp)

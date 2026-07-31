@@ -123,7 +123,11 @@ data class TransactionTemplate(
         return RawTxn(
             source = input.source,
             observedAt = input.timestamp,
-            occurredAt = input.timestamp,  // TODO: Parse from message body when stated
+            // The message's own timestamp when it states one credibly, otherwise
+            // when it arrived. A bank SMS sent at 23:58 can land at 00:01, which
+            // files the payment on the wrong day and leaves two daily totals
+            // wrong - found twice in a real six-month ledger.
+            occurredAt = MessageFacts.statedTime(text, input.timestamp) ?: input.timestamp,
             amountMinor = amount,
             currency = currency,
             direction = direction,
@@ -142,6 +146,7 @@ data class TransactionTemplate(
             instrument = null,  // TODO: Extract from message
             templateId = id,
             bodyHash = dedupeHash(text, input.timestamp),
+            institution = MessageFacts.institution(text),
             // The body alone, not the title-prefixed text the patterns run
             // against - this is shown to the user, so it should read exactly as
             // it did in their notification shade or inbox.

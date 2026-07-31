@@ -29,7 +29,17 @@ data class RawTxn(
      */
     val sourceBody: String? = null,
     /** Package name for a notification, sender ID for an SMS, file name for CSV. */
-    val sourceOrigin: String? = null
+    val sourceOrigin: String? = null,
+    /**
+     * The bank or wallet the message came from, when it names itself.
+     *
+     * Most bank SMS never says who was paid - "Rs. 10.00 debited from Airtel
+     * Payments Bank a/c Txn ID 8159..." has no payee anywhere in it. It does say
+     * which institution moved the money, and that is worth keeping: "Airtel
+     * Payments Bank ••2793" tells the user something true, where a bare
+     * "Bank message" tells them nothing.
+     */
+    val institution: String? = null
 ) {
     /** Truncated hash for display */
     fun shortHash(): String = bodyHash.take(12)

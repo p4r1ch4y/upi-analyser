@@ -11,7 +11,32 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
-Nothing yet.
+Measured against six months of one person's real ledger — 603 payments exported
+from the app itself.
+
+### Added
+
+- **A privacy panel that proves rather than claims.** It reads the app's own
+  permission list back out of the package manager at runtime and shows what is
+  actually there, including that `INTERNET` is not — using the same API any
+  auditor would. It also explains how to check the APK from outside, because a
+  user who does not trust the app should not have to trust that screen either.
+- **Rename a payment.** With a VPA this writes a rule replayed over every payment
+  to the same address; without one, only that row changes.
+- **Retroactive re-parse.** Every row keeps the message it was read from, so
+  improvements to the parser now repair payments already in the ledger instead of
+  helping only future ones. Verified on device: a row reading "Payment" became
+  "Google Play". Labels only — never an amount, direction or date.
+
+### Fixed
+
+- **82% of rows read "Bank message".** Not a parser bug: most bank SMS never
+  names the payee — "Rs. 10.00 debited from Airtel Payments Bank a/c Txn ID
+  8159…" contains no merchant anywhere. What those messages do carry, 97% of the
+  time, is the institution. Rows with a real label went from 22 to 584 of 596.
+- Payments made just before midnight were filed on the following day, because the
+  SMS arrived after it. The message's own stated time is now used when it is
+  within three days of arrival — a misparsed date is far worse than a late one.
 
 ## [0.1.2-alpha] — 2026-07-27
 

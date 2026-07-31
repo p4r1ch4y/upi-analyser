@@ -91,6 +91,7 @@ fun TransactionDetailSheet(
     onAddTag: (String) -> Unit,
     onRemoveTag: (String) -> Unit,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     zone: ZoneId = ZoneId.systemDefault()
 ) {
     val colors = SpendTheme.colors
@@ -118,11 +119,15 @@ fun TransactionDetailSheet(
                 style = typography.labelSmall,
                 color = colors.graphite
             )
+            // Tappable: the name is the thing most often wrong, because most bank
+            // messages never carry one.
             Text(
                 text = detail.displayName,
                 style = typography.titleLarge,
                 color = colors.ink,
-                modifier = Modifier.padding(top = 4.dp)
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .clickable(onClick = onRename)
             )
             detail.counterpartyVpa?.let {
                 Text(text = it, style = typography.bodySmall, color = colors.mist)
@@ -194,6 +199,11 @@ fun TransactionDetailSheet(
                 modifier = Modifier.fillMaxWidth().padding(top = 22.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                SheetButton(
+                    text = stringResource(R.string.action_rename),
+                    onClick = onRename,
+                    modifier = Modifier.weight(1f)
+                )
                 SheetButton(
                     text = stringResource(
                         if (detail.split == null) R.string.action_split else R.string.action_unsplit
@@ -664,5 +674,77 @@ private fun SheetButton(
         modifier = modifier
     ) {
         Text(text)
+    }
+}
+
+/**
+ * Renames one payment.
+ *
+ * The common case by a wide margin: most bank SMS never says who was paid, so the
+ * ledger can only show which bank moved the money and the user is the sole source
+ * of the actual answer. Where the payment does carry a VPA this writes a *rule*
+ * instead, which is replayed over every past and future payment to the same
+ * address - so the sheet says which of the two is about to happen.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RenameSheet(
+    currentName: String,
+    counterpartyVpa: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var name by remember { mutableStateOf(currentName) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = colors.paper
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .padding(bottom = 24.dp)
+                .imePadding()
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.rename_title),
+                style = typography.titleLarge,
+                color = colors.ink
+            )
+            Text(
+                text = counterpartyVpa
+                    ?.let { stringResource(R.string.rename_note_vpa, it) }
+                    ?: stringResource(R.string.rename_note),
+                style = typography.bodySmall,
+                color = colors.graphite
+            )
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.rename_field)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = { onConfirm(name.trim()) },
+                enabled = name.isNotBlank() && name.trim() != currentName,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.ink,
+                    contentColor = colors.paper
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.action_rename))
+            }
+        }
     }
 }

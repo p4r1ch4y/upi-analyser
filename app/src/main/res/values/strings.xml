@@ -173,4 +173,26 @@
     <string name="settings_tap_to_open">tap to open</string>
     <string name="settings_copied">Copied to clipboard</string>
     <string name="settings_version">SpendLens %1$s · %2$s build</string>
+
+    <!-- Privacy panel -->
+    <string name="privacy_title">What this app can reach</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_privacy_action">See what this app can reach →</string>
+    <string name="privacy_internet_absent">This app cannot reach the internet.</string>
+    <string name="privacy_internet_present">This build holds the INTERNET permission.</string>
+    <string name="privacy_internet_note">Android will not let an app open a network connection without the INTERNET permission. This list is read from the app\'s own installed manifest, not written by hand — so it shows what SpendLens actually holds, and it cannot hide one it does.</string>
+    <string name="privacy_permissions_held">%1$d permissions held</string>
+    <string name="privacy_permissions_note">Every permission this app declares, and why. Nothing else is available to it.</string>
+    <string name="privacy_granted">granted</string>
+    <string name="privacy_not_granted">not granted</string>
+    <string name="privacy_verify">Check it yourself</string>
+    <string name="privacy_verify_note">Do not take this screen\'s word for it either. Run this against the APK you downloaded — there should be no INTERNET line.</string>
+
+    <!-- Rename -->
+    <string name="rename_title">What was this?</string>
+    <string name="rename_note">The bank message did not say who was paid, so only you can name it.</string>
+    <string name="rename_note_vpa">Naming this also names every past and future payment to %1$s.</string>
+    <string name="rename_field">Name</string>
+    <string name="action_rename">Rename</string>
+    <string name="renamed">Renamed</string>
 </resources>
