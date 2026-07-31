@@ -112,6 +112,39 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+          Accepts a payment receipt shared from a UPI app. No permission of any
+          kind: the user pushes the text here, the app never reaches for it.
+        -->
+        <activity
+            android:name=".service.ShareReceiverActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:label="@string/share_target_label"
+            android:theme="@style/Theme.SpendLens.Invisible">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Quick Settings tile: one tap from the shade to note what the payment you
+          just made was actually for, while you still remember.
+        -->
+        <service
+            android:name=".service.QuickNoteTile"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Boot Receiver -->
         <receiver
             android:name=".service.BootReceiver"

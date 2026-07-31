@@ -47,6 +47,7 @@ data class TxnUi(
     val needsReview: Boolean,
     /** Attempted and did not go through. Shown, never counted. */
     val failed: Boolean = false,
+    val note: String? = null,
     val counterpartyVpa: String?,
     val split: SplitSummary? = null,
     val tags: List<TagRef> = emptyList()
@@ -143,6 +144,7 @@ sealed interface DayStreamEvent {
     data object NoBrowser : DayStreamEvent
     data object Copied : DayStreamEvent
     data object Renamed : DayStreamEvent
+    data object NoteSaved : DayStreamEvent
     data class RenamedMany(val count: Int) : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
@@ -432,6 +434,23 @@ class DayStreamViewModel(
         }
     }
 
+    /**
+     * Attaches a note to a payment.
+     *
+     * The remark typed in a UPI app never leaves that app - it is in neither the
+     * notification nor the bank SMS - so this is the only way that context ever
+     * reaches the ledger.
+     */
+    fun setNote(txnId: String, note: String?) {
+        viewModelScope.launch {
+            repository.setNote(txnId, note)
+            _events.send(DayStreamEvent.NoteSaved)
+        }
+    }
+
+    /** The newest payment, for the quick-note tile. */
+    suspend fun mostRecentId(): String? = repository.mostRecent()?.id
+
     /** How many unnamed payments the rename sheet would sweep up. */
     suspend fun similarCount(txnId: String): Int {
         val txn = state.value.transaction(txnId) ?: return 0
@@ -585,6 +604,7 @@ class DayStreamViewModel(
         isCredit = direction == Direction.CREDIT.name,
         needsReview = (flags and FusedTxn.FLAG_NEEDS_REVIEW.toLong()) != 0L,
         failed = (flags and FusedTxn.FLAG_FAILED.toLong()) != 0L,
+        note = note,
         counterpartyVpa = counterparty_vpa,
         split = split,
         tags = tags

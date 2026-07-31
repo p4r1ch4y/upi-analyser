@@ -100,7 +100,11 @@ data class TransactionTemplate(
     val failureMarker: Regex? = null
 ) {
     fun routes(input: ParserInput): Boolean = when (input.source) {
-        Source.NOTIFICATION -> input.packageName != null && input.packageName in packageNames
+        // A null package means the source is unknown, not that it is disallowed.
+        // Text shared into the app from a UPI receipt has no package to check
+        // against — refusing it there would silently reject the one rail that
+        // catches payments the listener never sees.
+        Source.NOTIFICATION -> input.packageName == null || input.packageName in packageNames
         Source.SMS -> anySender || matchesSender(input.sender)
         else -> false
     }

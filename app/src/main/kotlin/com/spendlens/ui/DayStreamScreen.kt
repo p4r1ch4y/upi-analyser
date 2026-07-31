@@ -17,18 +17,23 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.spendlens.R
@@ -429,35 +434,80 @@ private fun StreamRow(
     }
 }
 
-/** Search across name, VPA, tag and amount. */
+/**
+ * Search across name, VPA, tag and amount.
+ *
+ * Built from a bare text field rather than an OutlinedTextField: the stock
+ * Material box brings a heavy border, a floating label and 56dp of chrome, none
+ * of which belongs in a screen whose whole grammar is a printed receipt. What is
+ * left is a rule, a letterspaced prompt, and the match count sitting where the
+ * dotted leader would be on a transaction row.
+ */
 @Composable
 private fun SearchField(query: String, matchCount: Int, onQuery: (String) -> Unit) {
     val colors = SpendTheme.colors
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQuery,
-        placeholder = { Text(stringResource(R.string.search_placeholder)) },
-        singleLine = true,
-        trailingIcon = {
-            if (query.isNotBlank()) {
-                Text(
-                    text = stringResource(R.string.search_clear),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.graphite,
-                    modifier = Modifier
-                        .clickable { onQuery("") }
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                )
-            }
-        },
-        supportingText = if (query.isBlank()) null else {
-            { Text(stringResource(R.string.search_matches, matchCount)) }
-        },
+    val typography = MaterialTheme.typography
+    val focus = LocalFocusManager.current
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 18.dp)
-            .padding(top = 12.dp)
-    )
+            .padding(top = 14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(
+                value = query,
+                onValueChange = onQuery,
+                singleLine = true,
+                textStyle = typography.bodyMedium.copy(color = colors.ink),
+                cursorBrush = SolidColor(colors.ink),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner ->
+                    if (query.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.search_placeholder),
+                            style = typography.bodyMedium,
+                            color = colors.mist
+                        )
+                    }
+                    inner()
+                }
+            )
+
+            if (query.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.search_clear),
+                    style = typography.labelSmall,
+                    color = colors.graphite,
+                    modifier = Modifier
+                        .clickable { onQuery(""); focus.clearFocus() }
+                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp)
+                )
+            }
+        }
+
+        // The rule is the field. It thickens and inks when there is a query, so
+        // the state of the search is legible without a box around it.
+        Spacer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 7.dp)
+                .height(if (query.isEmpty()) 1.dp else 1.5.dp)
+                .background(if (query.isEmpty()) colors.rule else colors.ink)
+        )
+
+        if (query.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.search_matches, matchCount),
+                style = typography.labelSmall,
+                color = colors.graphite,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+    }
 }
 
 @Composable

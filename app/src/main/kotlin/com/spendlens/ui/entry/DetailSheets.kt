@@ -72,6 +72,7 @@ data class TransactionDetail(
     val isCredit: Boolean,
     val split: Split?,
     val tags: List<TagRef>,
+    val note: String? = null,
     val sources: List<SourceRecord> = emptyList()
 )
 
@@ -94,6 +95,7 @@ fun TransactionDetailSheet(
     onRemoveTag: (String) -> Unit,
     onDelete: () -> Unit,
     onRename: () -> Unit,
+    onNote: (String?) -> Unit,
     zone: ZoneId = ZoneId.systemDefault()
 ) {
     val colors = SpendTheme.colors
@@ -190,6 +192,35 @@ fun TransactionDetailSheet(
                         onAddTag(tagDraft.trim())
                         tagDraft = ""
                     }
+                )
+            }
+
+            // --------------------------------------------------------- note
+            // The remark typed in a UPI app never reaches the notification or the
+            // SMS, so this is the only route by which that context ever arrives.
+            var noteDraft by remember(detail.id) { mutableStateOf(detail.note.orEmpty()) }
+            Text(
+                text = stringResource(R.string.note_label).uppercase(Locale.ROOT),
+                style = typography.labelSmall,
+                color = colors.graphite,
+                modifier = Modifier.padding(top = 22.dp, bottom = 6.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = noteDraft,
+                    onValueChange = { noteDraft = it },
+                    placeholder = { Text(stringResource(R.string.note_placeholder)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                SheetButton(
+                    text = stringResource(R.string.action_save),
+                    enabled = noteDraft.trim() != detail.note.orEmpty(),
+                    onClick = { onNote(noteDraft.trim().takeIf { it.isNotEmpty() }) }
                 )
             }
 

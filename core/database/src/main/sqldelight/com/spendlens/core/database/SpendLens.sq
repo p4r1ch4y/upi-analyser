@@ -551,3 +551,19 @@ WHERE display_name = :display_name
   AND direction = :direction
   AND (flags & 64) = 0
   AND deleted_at IS NULL;
+
+-- The note a user attaches after the fact.
+--
+-- UPI apps let you type a remark when paying, but that remark never reaches the
+-- notification or the SMS - it stays inside the payment app. This is where it
+-- comes back, typed once by the person who already knows what it was for.
+setTransactionNote:
+UPDATE transactions
+SET note = :note, updated_at = :updated_at
+WHERE id = :id;
+
+selectMostRecentTransaction:
+SELECT * FROM transactions
+WHERE deleted_at IS NULL
+ORDER BY occurred_at DESC
+LIMIT 1;

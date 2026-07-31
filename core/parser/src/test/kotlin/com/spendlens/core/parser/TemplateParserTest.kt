@@ -169,6 +169,21 @@ class TemplateParserTest {
         assertNull(parser.parse(notification("com.phonepe.app", "PhonePe", "Win cashback up to ₹500 this week!")))
     }
 
+    /**
+     * A receipt shared in from a UPI app carries no package. Rejecting it would
+     * silently disable the one rail that catches on-device payments the
+     * notification listener never sees.
+     */
+    @Test
+    fun `shared text with no package still parses`() {
+        val txn = parser.parse(
+            ParserInput(source = Source.NOTIFICATION, packageName = null, body = "You paid Rs.45.00 to Chai Point", timestamp = AT)
+        )
+        assertNotNull(txn)
+        assertEquals(4_500L, txn!!.amountMinor)
+        assertEquals("Chai Point", txn.counterpartyNameRaw)
+    }
+
     @Test
     fun `unknown package is not parsed`() {
         assertNull(parser.parse(notification("com.example.wallet", null, "₹250 paid to Swiggy")))

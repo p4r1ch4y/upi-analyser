@@ -219,4 +219,17 @@
     <string name="rename_similar">Also rename %1$d payments like this</string>
     <string name="rename_similar_note">Same source and same amount — usually the same recurring thing.</string>
     <string name="renamed_many">Renamed %1$d payments</string>
+
+    <!-- Notes -->
+    <string name="note_label">Note</string>
+    <string name="note_placeholder">What was this for?</string>
+    <string name="note_saved">Note saved</string>
+
+    <!-- Share target and tile -->
+    <string name="share_target_label">Add to SpendLens</string>
+    <string name="tile_label">Note last payment</string>
+    <string name="share_added">Added to SpendLens</string>
+    <string name="share_already_known">Already in your ledger</string>
+    <string name="share_unreadable">Could not read a payment in that</string>
+    <string name="share_nothing">Nothing to add</string>
 </resources>

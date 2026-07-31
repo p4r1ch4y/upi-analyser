@@ -275,6 +275,16 @@ class TransactionRepository(
         changed
     }
 
+    suspend fun setNote(id: String, note: String?, now: Long = System.currentTimeMillis()) =
+        withContext(io) {
+            queries.setTransactionNote(note = note?.takeIf { it.isNotBlank() }, updated_at = now, id = id)
+        }
+
+    /** The latest payment, for the quick-note tile. */
+    suspend fun mostRecent(): Transactions? = withContext(io) {
+        queries.selectMostRecentTransaction().executeAsOneOrNull()
+    }
+
     /** How many unnamed payments share this label, amount and direction. */
     suspend fun countSimilar(displayName: String, amountMinor: Long, direction: String): Int =
         withContext(io) {

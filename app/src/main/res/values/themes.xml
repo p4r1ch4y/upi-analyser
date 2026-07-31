@@ -15,4 +15,17 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
+
+    <!--
+      For the share receiver: invisible, but not Theme.NoDisplay.
+      NoDisplay requires finish() before onResume() completes, and this activity
+      has to wait for the ledger write before it can tell the user what happened.
+      Translucent gives the same "no UI" feel without that contract, which
+      NoDisplay enforces with a hard crash.
+    -->
+    <style name="Theme.SpendLens.Invisible" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>

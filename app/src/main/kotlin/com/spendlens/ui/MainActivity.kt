@@ -46,6 +46,7 @@ import androidx.core.content.ContextCompat
 import com.spendlens.R
 import com.spendlens.SpendLensApp
 import com.spendlens.core.model.Split
+import com.spendlens.service.QuickNoteTile
 import com.spendlens.service.TransactionCaptureService
 import com.spendlens.service.UpiNotificationListener
 import com.spendlens.ui.dashboard.DashboardActions
@@ -86,6 +87,9 @@ class MainActivity : ComponentActivity() {
      */
     private var listenerEnabled by mutableStateOf(false)
 
+    /** Set from the launching intent, and again by onNewIntent. */
+    private var pendingAction by mutableStateOf<String?>(null)
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
@@ -117,8 +121,12 @@ class MainActivity : ComponentActivity() {
 
         listenerEnabled = isNotificationListenerEnabled()
         requestPostNotificationsIfNeeded()
+        pendingAction = intent?.action
 
         setContent {
+            // Read as state so a tile tap while the app is already open still
+            // routes: onNewIntent updates it and the effect below re-runs.
+            val intentAction = pendingAction
             // Collected before the theme so a change repaints everything.
             val themeMode by viewModel.themeMode.collectAsState()
             val typeface by viewModel.typeface.collectAsState()
@@ -142,6 +150,15 @@ class MainActivity : ComponentActivity() {
                 var renameTarget by remember { mutableStateOf<String?>(null) }
                 var renameSimilarCount by remember { mutableStateOf(0) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
+
+                // The Quick Settings tile lands here: open the newest payment so
+                // the note can be typed while the user still remembers what it
+                // was for. Keyed on the intent so a second tap re-opens it.
+                LaunchedEffect(intentAction) {
+                    if (intentAction == QuickNoteTile.ACTION_NOTE_LATEST) {
+                        viewModel.mostRecentId()?.let { openTxnId = it }
+                    }
+                }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
                 var openSources by remember { mutableStateOf<List<SourceRecord>>(emptyList()) }
                 var splitTarget by remember { mutableStateOf<String?>(null) }
@@ -234,6 +251,7 @@ class MainActivity : ComponentActivity() {
                                 isCredit = txn.isCredit,
                                 split = openSplit,
                                 tags = txn.tags,
+                                note = txn.note,
                                 sources = openSources
                             ),
                             allTags = state.allTags,
@@ -259,7 +277,8 @@ class MainActivity : ComponentActivity() {
                                 viewModel.delete(id)
                                 openTxnId = null
                             },
-                            onRename = { renameTarget = id }
+                            onRename = { renameTarget = id },
+                            onNote = { viewModel.setNote(id, it) }
                         )
                     }
                 }
@@ -396,6 +415,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingAction = intent.action
+    }
+
     override fun onResume() {
         super.onResume()
         listenerEnabled = isNotificationListenerEnabled()
@@ -510,6 +535,7 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
     DayStreamEvent.Copied -> getString(R.string.settings_copied)
     DayStreamEvent.Renamed -> getString(R.string.renamed)
+    DayStreamEvent.NoteSaved -> getString(R.string.note_saved)
     is DayStreamEvent.RenamedMany -> getString(R.string.renamed_many, event.count)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
