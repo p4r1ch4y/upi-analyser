@@ -1,12 +1,17 @@
 package com.spendlens.ui.entry
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -31,19 +36,30 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.spendlens.R
 import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.MoneyFormat
+import com.spendlens.data.SharedReceiptReader
 import com.spendlens.ui.theme.SpendTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
@@ -62,6 +78,21 @@ data class ManualEntry(
     val channel: Channel,
     val occurredAt: Long,
     val note: String?
+)
+
+/**
+ * A receipt shared in from a UPI app that the parser could not read.
+ *
+ * The image is a file inside this app's own cache, staged by the share receiver.
+ * Nothing here is asserted as fact - it is what the share carried, offered to the
+ * person who can actually read the picture.
+ */
+data class SharedReceiptPrefill(
+    val imagePath: String?,
+    /** When the screenshot was taken, which is far closer to payment time than now. */
+    val takenAt: Long?,
+    /** Any text that came with the share and did not parse. */
+    val text: String?
 )
 
 private val DATE_LABEL = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.ENGLISH)
@@ -100,7 +131,8 @@ private val PAYMENT_TYPES = listOf(
 fun AddTransactionSheet(
     onDismiss: () -> Unit,
     onSubmit: (ManualEntry) -> Unit,
-    zone: ZoneId = ZoneId.systemDefault()
+    zone: ZoneId = ZoneId.systemDefault(),
+    receipt: SharedReceiptPrefill? = null
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
@@ -108,16 +140,28 @@ fun AddTransactionSheet(
 
     var amountText by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    // Text the share carried but the parser could not read is still the user's
+    // own remark more often than not, so it starts in the note rather than being
+    // dropped. Trimmed to a line: a whole pasted receipt is not a note.
+    var note by remember { mutableStateOf(receipt?.text?.firstLine().orEmpty()) }
     var direction by remember { mutableStateOf(Direction.DEBIT) }
     var channel by remember { mutableStateOf(Channel.UPI) }
 
-    val nowLocal = remember { LocalDateTime.now(zone) }
-    var date by remember { mutableStateOf(nowLocal.toLocalDate()) }
-    var time by remember { mutableStateOf(nowLocal.toLocalTime().withSecond(0).withNano(0)) }
+    // A shared screenshot is taken seconds after the payment; the share itself
+    // may be the following evening. The screenshot's own timestamp is therefore
+    // the better default, and getting this wrong files the payment on the wrong
+    // day and quietly corrupts that day's total.
+    val startLocal = remember(receipt?.takenAt) {
+        receipt?.takenAt
+            ?.let { LocalDateTime.ofInstant(Instant.ofEpochMilli(it), zone) }
+            ?: LocalDateTime.now(zone)
+    }
+    var date by remember { mutableStateOf(startLocal.toLocalDate()) }
+    var time by remember { mutableStateOf(startLocal.toLocalTime().withSecond(0).withNano(0)) }
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
+    var showFullReceipt by remember { mutableStateOf(false) }
 
     val amountMinor = remember(amountText) { parseAmountMinor(amountText) }
     val canSubmit = amountMinor != null && amountMinor > 0 && name.isNotBlank()
@@ -138,10 +182,40 @@ fun AddTransactionSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.add_manual_transaction),
+                text = stringResource(
+                    if (receipt == null) R.string.add_manual_transaction
+                    else R.string.receipt_title
+                ),
                 style = typography.titleLarge,
                 color = colors.ink
             )
+
+            if (receipt != null) {
+                Text(
+                    // Only an image gets the apology. A share that carried text
+                    // the parser could not use is a different failure, and saying
+                    // "cannot read images" about it would be a lie.
+                    text = stringResource(
+                        if (receipt.imagePath != null) R.string.receipt_cannot_read
+                        else R.string.receipt_read_some
+                    ),
+                    style = typography.bodySmall,
+                    color = colors.graphite
+                )
+                receipt.imagePath?.let { path ->
+                    ReceiptPreview(
+                        path = path,
+                        onExpand = { showFullReceipt = true }
+                    )
+                }
+                if (receipt.takenAt != null) {
+                    Text(
+                        text = stringResource(R.string.receipt_time_from_image),
+                        style = typography.labelSmall,
+                        color = colors.mist
+                    )
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip(
@@ -236,6 +310,12 @@ fun AddTransactionSheet(
         }
     }
 
+    if (showFullReceipt) {
+        receipt?.imagePath?.let { path ->
+            FullReceiptDialog(path = path, onDismiss = { showFullReceipt = false })
+        }
+    }
+
     if (showDatePicker) {
         val state = rememberDatePickerState(
             initialSelectedDateMillis = date.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
@@ -294,6 +374,126 @@ fun AddTransactionSheet(
         }
     }
 }
+
+/**
+ * The shared receipt, inside the form.
+ *
+ * This is the whole fix. The previous behaviour opened manual entry *over* the
+ * screenshot and described it as leaving the receipt "still on screen behind it",
+ * which it is not - the form covers it, and the user is left retyping an amount
+ * from memory or bouncing between two apps. Showing it here costs one decode and
+ * removes the bounce entirely.
+ *
+ * Cropped to the top third at a fixed height, because a UPI receipt puts the
+ * amount and the payee in the first few centimetres and the rest is a reference
+ * number nobody types in. The whole image is one tap away.
+ */
+@Composable
+private fun ReceiptPreview(path: String, onExpand: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+    val density = LocalDensity.current
+    val maxPixels = remember(density) { with(density) { RECEIPT_PREVIEW_WIDTH.roundToPx() } * 2 }
+
+    // Decoded off the main thread: a 1440x3200 screenshot is real work, and doing
+    // it in composition drops the frame the sheet animates in on.
+    val bitmap by produceState<Bitmap?>(initialValue = null, path, maxPixels) {
+        value = withContext(Dispatchers.IO) {
+            SharedReceiptReader.decode(File(path), maxPixels)
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(RECEIPT_PREVIEW_HEIGHT)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.paperSunk)
+                .clickable(onClick = onExpand),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            bitmap?.let { image ->
+                Image(
+                    bitmap = image.asImageBitmap(),
+                    contentDescription = stringResource(R.string.receipt_title),
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.receipt_expand),
+            style = typography.labelSmall,
+            color = colors.mist,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+/**
+ * The receipt at full size, over everything.
+ *
+ * A dialog rather than another sheet: the point is to read a picture, and every
+ * pixel the form would keep is a pixel of the receipt the user cannot see.
+ */
+@Composable
+private fun FullReceiptDialog(path: String, onDismiss: () -> Unit) {
+    val colors = SpendTheme.colors
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val maxPixels = remember(configuration, density) {
+        with(density) { configuration.screenHeightDp.dp.roundToPx() }
+    }
+
+    val bitmap by produceState<Bitmap?>(initialValue = null, path, maxPixels) {
+        value = withContext(Dispatchers.IO) { SharedReceiptReader.decode(File(path), maxPixels) }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.paper)
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            bitmap?.let { image ->
+                Image(
+                    bitmap = image.asImageBitmap(),
+                    contentDescription = stringResource(R.string.receipt_title),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                )
+            }
+            Text(
+                text = stringResource(R.string.receipt_close),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.paper,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 24.dp)
+                    .background(colors.ink, RoundedCornerShape(6.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(horizontal = 16.dp, vertical = 9.dp)
+            )
+        }
+    }
+}
+
+/** The first non-blank line, for text that starts life as a whole receipt. */
+private fun String.firstLine(): String =
+    lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty().take(120)
+
+private val RECEIPT_PREVIEW_HEIGHT = 190.dp
+private val RECEIPT_PREVIEW_WIDTH = 360.dp
 
 @Composable
 private fun FieldLabel(text: String) {

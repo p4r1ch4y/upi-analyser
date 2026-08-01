@@ -11,6 +11,7 @@ import com.spendlens.core.model.Source
 import com.spendlens.core.parser.ParserInput
 import com.spendlens.core.parser.TemplateParser
 import com.spendlens.core.resolution.MerchantResolver
+import com.spendlens.data.BudgetRepository
 import com.spendlens.data.CsvStatementImporter
 import com.spendlens.data.DatabasePassphrase
 import com.spendlens.data.Days
@@ -114,6 +115,9 @@ class SpendLensApp : Application() {
 
         /** Splits, tags and the dashboard aggregates. */
         val annotations: SplitAndTagRepository by lazy { SplitAndTagRepository(database) }
+
+        /** Limits the user set, and what has been spent against them. */
+        val budgets: BudgetRepository by lazy { BudgetRepository(database) }
 
         val settings: SettingsStore by lazy { SettingsStore(context) }
 

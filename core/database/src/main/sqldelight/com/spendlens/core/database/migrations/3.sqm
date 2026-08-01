@@ -1,0 +1,25 @@
+-- v3 -> v4: budgets that this app can actually measure.
+--
+-- The `budgets` table has existed since the first schema and nothing has ever
+-- written a row to it. It was keyed on `category_id`, and there is no category
+-- model in this app on purpose - the two groupings the ledger can stand behind
+-- are the tag a person chose and the payee the payment itself named.
+--
+-- So this replaces the table rather than altering it. Dropping is safe precisely
+-- because nothing wrote to it: there is no user data here to lose, and a
+-- rewritten table is cleaner than four ALTERs leaving a dead `category_id`
+-- column behind forever.
+
+DROP TABLE budgets;
+
+CREATE TABLE budgets (
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'TOTAL',   -- TOTAL, TAG, MERCHANT
+    scope_value TEXT,                      -- tag or merchant name; NULL only for TOTAL
+    period TEXT NOT NULL,                  -- WEEKLY, MONTHLY
+    amount_minor INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'INR',
+    anchor_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);

@@ -63,9 +63,26 @@ OCR, and the choice is not free:
 | Tesseract (`tesseract4android`) | Apache-2.0 | ~20 MB with English data | acceptable |
 
 So the FOSS-compatible path exists but costs roughly twice the current APK, for a
-feature that is a convenience over typing four characters. Until that trade is
-made deliberately, a shared image opens manual entry with the receipt still on
-screen behind it — which is honest about what the app can and cannot read.
+feature that is a convenience over typing four characters. The trade is still
+open.
+
+Until it is made, a shared image opens manual entry **with the receipt rendered
+inside the form** and the date and time read from the screenshot's own timestamp.
+The earlier wording here — that the receipt stayed "on screen behind" the form —
+was not true of the running app: a bottom sheet covers it, and the user was left
+retyping an amount from memory. Showing the picture in the form costs one decode
+and removes the app-switching entirely, which is a large part of what OCR was
+going to buy.
+
+**Google Pay needs no OCR at all.** It names the file it hands to the share sheet
+after the payment: `1738737495 - 165.00 To Krishnendu Diyan on Google Pay.png`.
+That is a timestamp, an amount, a direction and a counterparty, written by the
+payment app, and `ReceiptFileName` reads it. Those receipts file themselves.
+
+So the remaining case for OCR is narrower than it looked: apps that name their
+receipts after nothing, PhonePe (`TransactionReceipt4551195680020140631`) being
+the obvious one. That is worth 20 MB to some users and not to others, which is
+the actual shape of the decision — a second build flavour, not a default.
 
 ## Screenshots
 

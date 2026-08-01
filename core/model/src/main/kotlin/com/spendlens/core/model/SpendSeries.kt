@@ -23,6 +23,27 @@ data class DayBucket(
 )
 
 /**
+ * A calendar month, in and out.
+ *
+ * Kept as its own type rather than reusing [DayBucket] with a first-of-month
+ * date, because the two answer different questions and a month that pretends to
+ * be a day invites someone to format it as one.
+ */
+data class MonthBucket(
+    val year: Int,
+    val month: Int,
+    val spentMinor: Long,
+    val receivedMinor: Long,
+    val count: Int
+) {
+    val start: LocalDate get() = LocalDate.of(year, month, 1)
+    val end: LocalDate get() = start.plusMonths(1).minusDays(1)
+
+    /** Spent minus received. Negative in a month you were paid more than you spent. */
+    val netMinor: Long get() = spentMinor - receivedMinor
+}
+
+/**
  * Turns a flat list of payments into the series a chart draws.
  *
  * Bucketing happens here rather than in SQL because a calendar day is a property
@@ -64,8 +85,57 @@ object SpendSeries {
             .toList()
     }
 
+    /**
+     * Buckets [events] by calendar month, **including months with no payments**.
+     *
+     * The empty months are the point, for the same reason the empty days are: a
+     * year with three quiet months compressed out of it looks like a year of
+     * steady spending, and the quiet months are usually the interesting ones.
+     *
+     * Ordered oldest first, so a chart drawn from it reads left to right.
+     */
+    fun byMonth(
+        events: List<SpendEvent>,
+        monthsBack: Int,
+        endingIn: LocalDate,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): List<MonthBucket> {
+        require(monthsBack > 0) { "a report over no months is not a report" }
+
+        val grouped = events.groupBy {
+            val date = Instant.ofEpochMilli(it.occurredAt).atZone(zone).toLocalDate()
+            date.year to date.monthValue
+        }
+
+        val firstMonth = endingIn.withDayOfMonth(1).minusMonths(monthsBack - 1L)
+        return generateSequence(firstMonth) { it.plusMonths(1) }
+            .takeWhile { !it.isAfter(endingIn.withDayOfMonth(1)) }
+            .map { month ->
+                val inMonth = grouped[month.year to month.monthValue].orEmpty()
+                MonthBucket(
+                    year = month.year,
+                    month = month.monthValue,
+                    spentMinor = inMonth.filter { !it.isCredit }.sumOf { it.effectiveMinor },
+                    receivedMinor = inMonth.filter { it.isCredit }.sumOf { it.effectiveMinor },
+                    count = inMonth.size
+                )
+            }
+            .toList()
+    }
+
     /** Total spent across the buckets. Credits are not netted off - see [netMinor]. */
     fun totalSpentMinor(buckets: List<DayBucket>): Long = buckets.sumOf { it.spentMinor }
+
+    /**
+     * The side of the ledger a figure is about.
+     *
+     * Threaded through every summary below because the report flips wholesale
+     * between the two, and a statistic that silently stays on the spending side
+     * while the headline reads income is worse than one that is missing: it looks
+     * like an answer.
+     */
+    fun amountOf(bucket: DayBucket, credits: Boolean): Long =
+        if (credits) bucket.receivedMinor else bucket.spentMinor
 
     /**
      * Mean spend per day across the whole range, quiet days included.
@@ -74,10 +144,12 @@ object SpendSeries {
      * less useful question - "what do I spend on a day I spend anything" - and
      * always reads high.
      */
-    fun dailyAverageMinor(buckets: List<DayBucket>): Long =
-        if (buckets.isEmpty()) 0L else totalSpentMinor(buckets) / buckets.size
+    fun dailyAverageMinor(buckets: List<DayBucket>, credits: Boolean = false): Long =
+        if (buckets.isEmpty()) 0L
+        else buckets.sumOf { amountOf(it, credits) } / buckets.size
 
-    fun busiestDay(buckets: List<DayBucket>): DayBucket? = buckets.maxByOrNull { it.spentMinor }
+    fun busiestDay(buckets: List<DayBucket>, credits: Boolean = false): DayBucket? =
+        buckets.maxByOrNull { amountOf(it, credits) }?.takeIf { amountOf(it, credits) > 0L }
 
     /**
      * The same span, immediately before [buckets].
@@ -86,10 +158,14 @@ object SpendSeries {
      * what last month was. This is what turns the headline from a number into a
      * direction.
      */
-    fun changeVsPrevious(current: List<DayBucket>, previous: List<DayBucket>): Change? {
+    fun changeVsPrevious(
+        current: List<DayBucket>,
+        previous: List<DayBucket>,
+        credits: Boolean = false
+    ): Change? {
         if (current.isEmpty() || previous.isEmpty()) return null
-        val now = totalSpentMinor(current)
-        val before = totalSpentMinor(previous)
+        val now = current.sumOf { amountOf(it, credits) }
+        val before = previous.sumOf { amountOf(it, credits) }
         if (before == 0L) return null
         return Change(nowMinor = now, beforeMinor = before)
     }
@@ -99,7 +175,22 @@ object SpendSeries {
         /** Signed fraction: 0.23 means 23% more than the period before. */
         val fraction: Float get() = (deltaMinor.toDouble() / beforeMinor).toFloat()
         val isUp: Boolean get() = deltaMinor > 0
+
+        /**
+         * True once a percentage stops being readable.
+         *
+         * A month against an almost-empty one produces "9127% more", which is
+         * arithmetically correct and tells the reader nothing - nobody holds a
+         * ninety-one-fold increase in their head as a percentage. Past this the
+         * UI says "×92" instead.
+         */
+        val isLarge: Boolean get() = beforeMinor > 0L && nowMinor / beforeMinor >= LARGE_MULTIPLE
+
+        /** How many times over, for the cases [isLarge] covers. */
+        val multiple: Long get() = if (beforeMinor <= 0L) 0L else nowMinor / beforeMinor
     }
+
+    private const val LARGE_MULTIPLE = 10L
 
     /**
      * Days with no spending at all.
@@ -108,7 +199,8 @@ object SpendSeries {
      * average - "I spent nothing on 9 days this month" lands where "₹243/day"
      * does not.
      */
-    fun spendFreeDays(buckets: List<DayBucket>): Int = buckets.count { it.spentMinor == 0L }
+    fun spendFreeDays(buckets: List<DayBucket>, credits: Boolean = false): Int =
+        buckets.count { amountOf(it, credits) == 0L }
 
     /**
      * Mean spend on the days money was actually spent.
@@ -117,9 +209,9 @@ object SpendSeries {
      * two answer different questions, and the gap between them is itself the
      * interesting part.
      */
-    fun averageOnSpendingDays(buckets: List<DayBucket>): Long {
-        val active = buckets.filter { it.spentMinor > 0L }
-        return if (active.isEmpty()) 0L else active.sumOf { it.spentMinor } / active.size
+    fun averageOnSpendingDays(buckets: List<DayBucket>, credits: Boolean = false): Long {
+        val active = buckets.filter { amountOf(it, credits) > 0L }
+        return if (active.isEmpty()) 0L else active.sumOf { amountOf(it, credits) } / active.size
     }
 
     /** Spent minus received. Can be negative in a month you were paid back. */

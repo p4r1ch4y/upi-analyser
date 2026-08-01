@@ -43,12 +43,35 @@ class SmsInboxImporter(
             PackageManager.PERMISSION_GRANTED
 
     /** Whether this build's manifest asks for READ_SMS at all. */
-    fun declaresReadSms(): Boolean = runCatching {
+    fun declaresReadSms(): Boolean = Manifest.permission.READ_SMS in declaredPermissions()
+
+    /**
+     * The SMS permissions this build actually declares, so both can be asked for
+     * in one dialog.
+     *
+     * Both matter and they do different jobs. `READ_SMS` reaches the inbox, which
+     * is the only rail that recovers history from before install. `RECEIVE_SMS`
+     * is what lets the broadcast receiver fire on a message arriving, which is
+     * the live rail.
+     *
+     * Asking for only the first is how the `full` flavour shipped with a
+     * registered `SMS_RECEIVED` receiver that could never fire: the import
+     * worked, so the feature looked healthy, while every bank SMS arriving after
+     * install was silently missed.
+     */
+    fun declaredSmsPermissions(): List<String> {
+        val declared = declaredPermissions()
+        return listOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
+            .filter { it in declared }
+    }
+
+    private fun declaredPermissions(): Set<String> = runCatching {
         context.packageManager
             .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
             .requestedPermissions
-            ?.contains(Manifest.permission.READ_SMS) == true
-    }.getOrDefault(false)
+            ?.toSet()
+            .orEmpty()
+    }.getOrDefault(emptySet())
 
     /**
      * Parses every inbox message newer than [since] that any template recognises.

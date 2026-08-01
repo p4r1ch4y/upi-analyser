@@ -177,7 +177,15 @@ data class TransactionTemplate(
         )
     }
 
-    private companion object {
+    /**
+     * `internal` rather than `private`: [ReceiptFileName] reads a payment out of a
+     * shared file's *name* and needs the same exact-decimal amount parsing, name
+     * limit and dedupe hashing as a template does. Re-implementing those beside it
+     * is how two parsers in one app end up disagreeing about what `2999.95` is
+     * worth - which is precisely the bug the BigDecimal comment below exists to
+     * prevent.
+     */
+    internal companion object {
         fun normalizeSender(sender: String): String =
             sender.split('-').maxByOrNull { it.length }.orEmpty().trim().uppercase()
 

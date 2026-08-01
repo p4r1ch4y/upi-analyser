@@ -13,4 +13,30 @@
         <item quantity="one">%d merchant</item>
         <item quantity="other">%d merchants</item>
     </plurals>
+    <!--
+      No "zero" item: English has no CLDR zero form, so Android would fall
+      through to "other" and print "0 days left" on the last day of a budget.
+      That case is handled in code with its own string.
+    -->
+    <plurals name="budget_days_left">
+        <item quantity="one">%d day left</item>
+        <item quantity="other">%d days left</item>
+    </plurals>
+    <!-- The denominator line under the breakdown. "1 tags · total tagged" again. -->
+    <plurals name="group_total_merchant">
+        <item quantity="one">%d payee · total</item>
+        <item quantity="other">%d payees · total</item>
+    </plurals>
+    <plurals name="group_total_tag">
+        <item quantity="one">%d tag · total tagged</item>
+        <item quantity="other">%d tags · total tagged</item>
+    </plurals>
+    <plurals name="group_total_channel">
+        <item quantity="one">%d payment type · total</item>
+        <item quantity="other">%d payment types · total</item>
+    </plurals>
+    <plurals name="rows_not_shown">
+        <item quantity="one">%d smaller row not shown</item>
+        <item quantity="other">%d smaller rows not shown</item>
+    </plurals>
 </resources>

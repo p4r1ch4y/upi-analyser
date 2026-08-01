@@ -71,13 +71,27 @@ CREATE TABLE vpa_rules (
     created_at INTEGER NOT NULL
 );
 
+-- A limit the user set for themselves.
+--
+-- Scoped by tag name or merchant display name rather than by a category id: this
+-- app has no category model on purpose, and the two groupings it can stand behind
+-- are the tag a person actually chose and the payee the payment itself named. The
+-- values are the same strings the breakdown groups by, so a budget and the bar it
+-- came from are guaranteed to count the same rows.
+--
+-- `anchor_at` fixes the day the period turns over. Salaries here land on the 1st,
+-- the 7th and the 25th depending on the employer, and a "monthly" budget that
+-- resets on a day the money does not arrive is wrong for its own first week.
 CREATE TABLE budgets (
     id TEXT PRIMARY KEY NOT NULL,
-    category_id TEXT REFERENCES categories(id),
-    period TEXT NOT NULL,  -- WEEKLY, MONTHLY, CUSTOM
+    name TEXT NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'TOTAL',   -- TOTAL, TAG, MERCHANT
+    scope_value TEXT,                      -- tag or merchant name; NULL only for TOTAL
+    period TEXT NOT NULL,                  -- WEEKLY, MONTHLY
     amount_minor INTEGER NOT NULL,
     currency TEXT NOT NULL DEFAULT 'INR',
-    starts_at INTEGER NOT NULL
+    anchor_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
 );
 
 CREATE TABLE splits (
@@ -438,6 +452,56 @@ GROUP BY tg.name
 ORDER BY effective_minor DESC
 LIMIT :limit;
 
+-- Budgets --------------------------------------------------------------------
+
+selectBudgets:
+SELECT * FROM budgets ORDER BY created_at;
+
+upsertBudget:
+INSERT OR REPLACE INTO budgets (
+    id, name, scope, scope_value, period, amount_minor, currency, anchor_at, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteBudget:
+DELETE FROM budgets WHERE id = :id;
+
+-- What has been spent against a budget in its current window.
+--
+-- Deliberately the same shape as `selectSpendByMerchant`: same effective amount
+-- (the user's share of a split, not the gross), same exclusion of failed
+-- payments. A budget that counted differently from the chart above it would be
+-- the fastest way to make someone distrust both.
+selectSpendTotalBetween:
+SELECT SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0;
+
+selectSpendForMerchantBetween:
+SELECT SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
+  AND t.display_name = :label;
+
+selectSpendForTagBetween:
+SELECT SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+JOIN transaction_tags tt ON tt.txn_id = t.id
+JOIN tags tg ON tg.id = tt.tag_id
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
+  AND tg.name = :label;
+
 -- One row per transaction, already reduced to what the user actually spent.
 -- Bucketing into days happens in Kotlin, where the time zone is known; SQLite
 -- would have to be told the offset and would get it wrong across a DST change.
@@ -487,6 +551,16 @@ WHERE counterparty_name_raw IS NOT NULL
 
 selectSourceMessages:
 SELECT * FROM source_messages WHERE txn_id = :txnId ORDER BY received_at;
+
+-- Which rails, and which app or sender within each, a payment has already been
+-- seen on. Read while deciding whether an incoming message is a second view of
+-- this payment or a second payment: a UPI app posts one notification per
+-- payment, so a second one from the same package is never the same payment.
+--
+-- Deliberately without the body, because this runs for every fusion candidate
+-- and the bodies are the largest column in the database.
+selectSourceOrigins:
+SELECT source, origin FROM source_messages WHERE txn_id = :txnId;
 
 insertSourceMessage:
 INSERT INTO source_messages (id, txn_id, source, origin, body, received_at, template_id)

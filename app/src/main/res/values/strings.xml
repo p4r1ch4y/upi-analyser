@@ -22,6 +22,7 @@
     
     <!-- Home screen -->
     <string name="today">Today</string>
+    <string name="back_again_to_exit">Press back again to leave SpendLens</string>
     <string name="name_this_merchant">Name this merchant</string>
     
     <!-- Actions -->
@@ -122,6 +123,7 @@
     <string name="dash_busiest_day">Biggest day</string>
     <string name="dash_payments">Payments</string>
     <string name="dash_by_day">Spending by day</string>
+    <string name="dash_by_day_in">Money in by day</string>
     <string name="dash_top_merchants">Where it went</string>
     <string name="dash_expense">Expense</string>
     <string name="dash_income">Income</string>
@@ -229,6 +231,7 @@
     <string name="share_target_label">Add to SpendLens</string>
     <string name="tile_label">Note last payment</string>
     <string name="share_added">Added to SpendLens</string>
+    <string name="share_added_on">Added · %1$s</string>
     <string name="share_already_known">Already in your ledger</string>
     <string name="share_unreadable">Could not read a payment in that</string>
     <string name="share_nothing">Nothing to add</string>
@@ -242,4 +245,66 @@
     <string name="dash_down_vs_previous">%1$d%% less than the period before · −%2$s</string>
     <string name="dash_average_active">On days you spent</string>
     <string name="dash_spend_free_days">Days you spent nothing</string>
+    <string name="dash_average_active_in">On days you received</string>
+    <string name="dash_busiest_day_in">Biggest day in</string>
+    <string name="dash_quiet_days_in">Days nothing came in</string>
+    <string name="dash_times_vs_previous">%1$d× the period before · +%2$s</string>
+    <string name="dash_tap_note">Tap any row to see the payments behind it.</string>
+    <!-- Beside the tap count, so a day that only received money is not a bare zero. -->
+    <string name="day_received_in">· +%1$s in</string>
+    <string name="dash_month_by_month">Month by month</string>
+    <string name="dash_month_note">Thick mark is money out, thin one is money in — scaled so an unusual month does not flatten the rest. Tap a month to see it.</string>
+
+    <!-- Stream filter, arrived at from a bar on Insights or from a budget -->
+    <string name="filter_kind_all">Everything in this period</string>
+    <string name="filter_kind_day">that day</string>
+    <string name="filter_kind_merchant">Payments to</string>
+    <string name="filter_kind_tag">Tagged</string>
+    <string name="filter_kind_channel">Paid by</string>
+    <string name="filter_clear">Done</string>
+    <string name="filter_no_matches">No payments here. They may have been renamed or deleted since.</string>
+    <string name="filter_range_days">last %1$d days</string>
+
+    <!-- Budgets -->
+    <string name="budget_section">Budgets</string>
+    <string name="budget_add">+ Add</string>
+    <string name="budget_edit">Edit</string>
+    <string name="budget_delete">Delete this budget</string>
+    <string name="budget_of">%1$s of %2$s</string>
+    <string name="budget_scope_total">Everything</string>
+    <string name="budget_scope_tag">A tag</string>
+    <string name="budget_scope_merchant">A payee</string>
+    <string name="budget_last_day">Last day</string>
+    <string name="budget_nothing_yet">nothing spent yet</string>
+    <string name="budget_over_by">Over by %1$s</string>
+    <string name="budget_on_track">%1$s left · %2$s a day to stay under</string>
+    <string name="budget_ahead_of_pace">On course for %1$s · %2$s a day from here</string>
+    <string name="budget_empty_title">Set a budget</string>
+    <string name="budget_empty_body">A limit for everything, or for one tag or payee. SpendLens shows how far through the period you are, so you can tell "half spent" from "spending too fast".</string>
+    <string name="budget_empty_action">Set one from what you already spend →</string>
+    <string name="budget_new_title">New budget</string>
+    <string name="budget_edit_title">Edit budget</string>
+    <string name="budget_field_scope">What it covers</string>
+    <string name="budget_field_period">How often it resets</string>
+    <string name="budget_field_limit">Limit</string>
+    <string name="budget_field_name">Name (optional)</string>
+    <string name="budget_period_weekly">Weekly</string>
+    <string name="budget_period_monthly">Monthly</string>
+    <string name="budget_anchor_weekly">Resets every week on today\'s weekday.</string>
+    <string name="budget_anchor_monthly">Resets on today\'s date each month, not on the 1st — so it can follow your payday.</string>
+    <string name="budget_suggestion_week">You spent %1$s in the last full week. Tap to use it.</string>
+    <string name="budget_suggestion_month">You spent %1$s in the last full month. Tap to use it.</string>
+    <string name="budget_no_tags">Tag some payments first — a tag is the closest thing this app has to a category.</string>
+    <string name="budget_no_merchants">No payees yet. Capture a few payments first.</string>
+    <string name="budget_saved">Budget saved</string>
+    <string name="budget_removed">Budget removed</string>
+
+    <!-- A receipt shared in from a UPI app -->
+    <string name="receipt_title">From your receipt</string>
+    <string name="receipt_cannot_read">SpendLens cannot read images, so the amount is yours to type. The receipt stays on screen while you do.</string>
+    <string name="receipt_read_some">Read from what was shared. Check it against the receipt.</string>
+    <string name="receipt_expand">Tap the receipt to see it full size</string>
+    <string name="receipt_close">Close</string>
+    <string name="receipt_unreadable_image">That image could not be opened</string>
+    <string name="receipt_time_from_image">Time taken from the screenshot</string>
 </resources>

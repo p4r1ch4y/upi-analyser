@@ -1,6 +1,6 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 110 unit tests pass, lint is clean, and the app
+Alpha. Both flavours build, all 192 unit tests pass, lint is clean, and the app
 captures, stores and displays real payments end to end — verified on a physical
 device, not just in the test suite.
 
@@ -21,6 +21,7 @@ outright scam SMS.
 | Bank SMS (live) | `full` | no — from install onward |
 | SMS inbox import | `full` | **yes** — months to years |
 | CSV statement import | both | **yes** — whatever the file holds |
+| Shared receipt | both | whatever the user shares |
 | Manual entry | both | user's choice of date |
 
 Android exposes no notification history to third-party apps
@@ -59,6 +60,15 @@ nudge**.
 - **Fusion** (`core/fusion`) — exact RRN → confidence 1.0; matching amount,
   currency and direction within ±90 s → 0.8. Sources are merged into one row,
   field by field, by trust; the source mask records who contributed.
+
+  The heuristic match only applies against a payment **not already seen on the
+  same rail and sender**. Amount-plus-window cannot distinguish "the bank has now
+  texted about the payment the app announced" from "the same shop was paid the
+  same amount twice in three minutes", and the second is ordinary. A UPI app posts
+  one notification per payment, so a second one from that package is a second
+  payment. Found on a real ledger, where two ₹45 chai payments a minute apart had
+  become one row and ₹45 had vanished. RRN matches are exempt: an RRN identifies
+  the payment itself.
 - **Resolution** (`core/resolution`) — the 6-rung ladder. Never returns
   "Unknown". Naming a merchant writes a rule and replays it over every past
   payment to the same VPA.
@@ -67,6 +77,10 @@ nudge**.
   the wrapped blob reaches SharedPreferences.
 
 ### UI
+
+**Back** unwinds rather than exits: a selection, then a breakdown filter, then a
+search, then Insights back to the stream, and only then "press back again to
+leave". Reading a report is exactly when a stray back is most expensive.
 
 **Stream** — day-ordered, not a dashboard. Tap bar with square-root scaling,
 receipt-grammar rows with dotted leaders, review chips on low-confidence rows.
@@ -96,6 +110,45 @@ merchant, tag or payment type; sort by amount, count or name. A balance card
 bars carrying each row's payment count and share of the total. One mark language
 throughout: magnitude is length, colour is emphasis only. No categorical
 palette, no legends, no pie charts.
+
+Every mark opens. A breakdown bar, a day column, a month row — each shows the
+stream narrowed to exactly the payments behind it, over the same window it was
+measured across. A chart that names a payee, gives a total and then refuses to
+say which payments those were is a dead end.
+
+**Month by month** — twelve months of in and out on one scale, so a high month
+can be recognised as high *for this person* rather than only against its
+neighbour. Out is the thick mark, in the thin one beneath it. The section keeps
+its own window rather than following the range chips: narrowing the range to look
+at something closely should not delete the comparison that gives it meaning.
+
+**Budgets** — scoped to everything, one tag, or one payee. There is no category
+model here on purpose, so those are the two groupings a limit can honestly hang
+off. Each budget draws a **pace marker**: where an even spread would have you by
+today. That mark is the whole point — "₹4,120 of ₹8,000" looks comfortable and is
+not, if it is the 6th of the month, and restyling the fill will never say so. The
+line underneath reads "on course for ₹18,600 · ₹190 a day from here".
+
+Monthly budgets reset on the day they were set rather than on the 1st, because
+salaries land on the 1st, the 7th and the 25th depending on the employer. The
+sheet offers what that scope actually cost last period as the opening figure: a
+blank amount box is the real reason budget features go unused.
+
+**Shared receipts** — most UPI apps share a screenshot rather than text. Three
+things are tried, in order of how much they give up.
+
+Every text the intent carries — extra, subject, clip data, `SEND_MULTIPLE`
+payload — goes to the parser, individually and joined. Then the *file name*:
+Google Pay names a shared receipt `1738737495 - 165.00 To Krishnendu Diyan on
+Google Pay.png`, which is a whole transaction written by the payment app, so
+those file themselves with no OCR. If neither reads, the entry form opens **with
+the receipt rendered inside it** and the date taken from the screenshot's own
+timestamp. The image is copied into private cache for exactly as long as the form
+needs it, then deleted.
+
+Verified on a handset against real receipts from both apps: the Google Pay pair
+filed themselves and collapsed correctly when shared twice; the PhonePe pair,
+whose names say nothing, fall through to the form.
 
 **Manual entry** — amount, counterparty, direction, payment type, editable date
 and time.
@@ -176,7 +229,17 @@ Verifiable on the artifact, not just claimed:
 
 - Encrypted backup and restore (Argon2id → XChaCha20-Poly1305 over SAF). The
   format is specified in `ARCHITECTURE_FLOW.md`; none of it is implemented.
-- Budgets. The table exists; no UI reaches it.
+- OCR on a shared receipt. Google Pay needs none — its file name carries the whole
+  payment — so what is left is apps that name their receipts after nothing, like
+  PhonePe's `TransactionReceipt4551195680020140631`. For those the receipt is shown
+  inside the entry form and the date read from the screenshot, but the amount and
+  payee are still typed. The FOSS option (`tesseract4android`) costs roughly twice
+  the current APK, which makes it a second build flavour rather than a default —
+  the trade is written up in `fdroid/README.md` and has not been made.
+- **The stream and Insights only reach back one year** (`HISTORY_MILLIS`). Sharing
+  an older receipt files it correctly and then shows it nowhere, which is how the
+  Feb 2025 receipt above behaved. The confirmation names the date so the user is
+  not left thinking it vanished, but the window itself is still arbitrary.
 - Accounts as first-class objects, transfers between them, and per-category
   spending limits — the things a conventional tracker's nav drawer offers. Each
   needs its own model work rather than another screen.

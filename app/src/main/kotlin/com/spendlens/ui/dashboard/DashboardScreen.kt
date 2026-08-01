@@ -22,10 +22,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.spendlens.R
-import com.spendlens.core.model.MoneyFormat
+import com.spendlens.core.model.BudgetProgress
+import com.spendlens.core.model.MonthBucket
 import com.spendlens.ui.charts.BarDatum
 import com.spendlens.ui.charts.ChartEmpty
 import com.spendlens.ui.charts.RankedBars
@@ -44,7 +46,15 @@ data class DashboardActions(
     val onRange: (DashboardRange) -> Unit = {},
     val onDirection: (SpendDirection) -> Unit = {},
     val onGroupBy: (GroupBy) -> Unit = {},
-    val onSortBy: (SortBy) -> Unit = {}
+    val onSortBy: (SortBy) -> Unit = {},
+    /** A bar was tapped: open the payments behind it. */
+    val onOpenSlice: (SliceSelection) -> Unit = {},
+    val onOpenBudget: (BudgetProgress) -> Unit = {},
+    val onEditBudget: (BudgetProgress) -> Unit = {},
+    val onNewBudget: () -> Unit = {},
+    /** A single day on the spend-by-day chart, or a whole month on the comparison. */
+    val onOpenDay: (LocalDate) -> Unit = {},
+    val onOpenMonth: (MonthBucket) -> Unit = {}
 )
 
 /**
@@ -67,6 +77,7 @@ fun DashboardScreen(
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
+    val income = state.direction == SpendDirection.INCOME
 
     Column(
         modifier = modifier
@@ -128,13 +139,24 @@ fun DashboardScreen(
         // The comparison, immediately under the number it qualifies. A total on
         // its own answers nothing - this is what makes it a judgement.
         state.change?.let { change ->
-            val percent = kotlin.math.abs(change.fraction * 100).toInt()
             Text(
-                text = stringResource(
-                    if (change.isUp) R.string.dash_up_vs_previous else R.string.dash_down_vs_previous,
-                    percent,
-                    money(kotlin.math.abs(change.deltaMinor))
-                ),
+                // A near-empty previous period turns into "9127% more", which is
+                // correct and unreadable - nobody holds a ninety-one-fold rise in
+                // their head as a percentage. Past ten times over it reads "×92".
+                text = if (change.isLarge) {
+                    stringResource(
+                        R.string.dash_times_vs_previous,
+                        change.multiple,
+                        money(kotlin.math.abs(change.deltaMinor))
+                    )
+                } else {
+                    stringResource(
+                        if (change.isUp) R.string.dash_up_vs_previous
+                        else R.string.dash_down_vs_previous,
+                        kotlin.math.abs(change.fraction * 100).toInt(),
+                        money(kotlin.math.abs(change.deltaMinor))
+                    )
+                },
                 style = typography.bodySmall,
                 // Up is not automatically bad and down is not automatically good,
                 // so neither gets a success or warning colour - only emphasis.
@@ -145,6 +167,16 @@ fun DashboardScreen(
 
         if (state.isEmpty) {
             ChartEmpty(stringResource(R.string.dash_nothing), Modifier.padding(top = 24.dp))
+            // Budgets survive an empty range: they carry their own windows, and
+            // "nothing in the last 7 days" is not a reason to hide a limit that
+            // is three quarters gone for the month.
+            BudgetSection(
+                budgets = state.rankedBudgets,
+                onOpen = actions.onOpenBudget,
+                onEdit = actions.onEditBudget,
+                onNew = actions.onNewBudget,
+                modifier = Modifier.padding(top = 28.dp)
+            )
             Spacer(Modifier.navigationBarsPadding().height(80.dp))
             return@Column
         }
@@ -160,9 +192,14 @@ fun DashboardScreen(
                 value = money(state.dailyAverageMinor),
                 caption = stringResource(R.string.dash_daily_average)
             )
+            // Every caption follows the direction chips. "On days you spent" over
+            // an income figure is a label describing the wrong side of the ledger.
             StatTile(
                 value = money(state.averageOnSpendingDays),
-                caption = stringResource(R.string.dash_average_active)
+                caption = stringResource(
+                    if (income) R.string.dash_average_active_in
+                    else R.string.dash_average_active
+                )
             )
         }
 
@@ -172,21 +209,24 @@ fun DashboardScreen(
         ) {
             state.busiestDay?.let { busiest ->
                 StatTile(
-                    value = money(busiest.spentMinor),
-                    caption = stringResource(R.string.dash_busiest_day) +
-                        " · " + busiest.date.format(DAY_FORMAT)
+                    value = money(state.busiestDayMinor),
+                    caption = stringResource(
+                        if (income) R.string.dash_busiest_day_in else R.string.dash_busiest_day
+                    ) + " · " + busiest.date.format(DAY_FORMAT)
                 )
             }
             // People recognise this about themselves far more readily than an
             // average: "nothing on 9 days" lands where "₹243/day" does not.
             StatTile(
                 value = state.spendFreeDays.toString(),
-                caption = stringResource(R.string.dash_spend_free_days)
+                caption = stringResource(
+                    if (income) R.string.dash_quiet_days_in else R.string.dash_spend_free_days
+                )
             )
         }
 
         // ------------------------------------------------------------- by day
-        Section(stringResource(R.string.dash_by_day)) {
+        Section(stringResource(if (income) R.string.dash_by_day_in else R.string.dash_by_day)) {
             val values = state.buckets.map {
                 if (state.direction == SpendDirection.EXPENSE) it.spentMinor else it.receivedMinor
             }
@@ -194,7 +234,16 @@ fun DashboardScreen(
             val todayIndex = state.buckets.indexOfFirst { it.date == LocalDate.now() }
                 .takeIf { it >= 0 }
 
-            SpendColumns(values = values, emphasisIndex = peakIndex, accentIndex = todayIndex)
+            SpendColumns(
+                values = values,
+                emphasisIndex = peakIndex,
+                accentIndex = todayIndex,
+                // The column was the last thing on this screen that showed a
+                // number and refused to say what was behind it.
+                onSelectIndex = { index ->
+                    state.buckets.getOrNull(index)?.let { actions.onOpenDay(it.date) }
+                }
+            )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -203,6 +252,30 @@ fun DashboardScreen(
                 Text(state.buckets.last().date.format(DAY_FORMAT), style = typography.labelSmall, color = colors.mist)
             }
         }
+
+        // -------------------------------------------------------- month by month
+        //
+        // The comparison the headline could only gesture at. "12% more than the
+        // period before" is one neighbour; whether that is high for this person
+        // needs the other eleven months on screen.
+        MonthSection(
+            months = state.months,
+            onOpen = actions.onOpenMonth,
+            modifier = Modifier.padding(top = 28.dp)
+        )
+
+        // ------------------------------------------------------------- budgets
+        //
+        // Above the breakdown, because it answers the question the breakdown only
+        // sets up: the bars say where the money went, this says whether that was
+        // more than the user meant.
+        BudgetSection(
+            budgets = state.rankedBudgets,
+            onOpen = actions.onOpenBudget,
+            onEdit = actions.onEditBudget,
+            onNew = actions.onNewBudget,
+            modifier = Modifier.padding(top = 28.dp)
+        )
 
         // ----------------------------------------------------------- breakdown
         Section(stringResource(R.string.dash_breakdown)) {
@@ -247,6 +320,34 @@ fun DashboardScreen(
             if (rows.isEmpty()) {
                 ChartEmpty(stringResource(R.string.dash_nothing_grouped), Modifier.padding(top = 8.dp))
             } else {
+                // The denominator behind every share on this list. Without it a
+                // "75%" bar is a percentage of a number that appears nowhere on
+                // screen - and when grouping by tag it is deliberately *not* the
+                // headline total, because only tagged payments are counted.
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = pluralStringResource(
+                            when (state.groupBy) {
+                                GroupBy.MERCHANT -> R.plurals.group_total_merchant
+                                GroupBy.TAG -> R.plurals.group_total_tag
+                                GroupBy.CHANNEL -> R.plurals.group_total_channel
+                            },
+                            rows.size,
+                            rows.size
+                        ),
+                        style = typography.labelSmall,
+                        color = colors.graphite
+                    )
+                    Text(
+                        text = money(state.groupTotalMinor),
+                        style = typography.bodySmall,
+                        color = colors.ink
+                    )
+                }
                 RankedBars(
                     data = rows.mapIndexed { index, slice ->
                         BarDatum(
@@ -256,10 +357,17 @@ fun DashboardScreen(
                             // Emphasis follows the largest bar, which is only the
                             // first row when sorting by amount.
                             emphasis = state.sortBy == SortBy.AMOUNT && index == 0,
-                            share = state.shareOf(slice)
+                            share = state.shareOf(slice),
+                            // The stored value, which for a channel is not the
+                            // word on the bar: "Card" is rendered from `CARD`.
+                            key = slice.label
                         )
                     },
                     maxRows = 20,
+                    // The breakdown used to end here, which made it a dead end:
+                    // it named the payee and then refused to say which payments
+                    // added up to that figure.
+                    onSelect = { bar -> actions.onOpenSlice(state.selectionFor(bar.key, bar.label)) },
                     modifier = Modifier.padding(top = 14.dp)
                 )
             }
@@ -270,6 +378,12 @@ fun DashboardScreen(
             style = typography.labelSmall,
             color = colors.mist,
             modifier = Modifier.padding(top = 24.dp)
+        )
+        Text(
+            text = stringResource(R.string.dash_tap_note),
+            style = typography.labelSmall,
+            color = colors.mist,
+            modifier = Modifier.padding(top = 2.dp)
         )
 
         Spacer(Modifier.navigationBarsPadding().height(80.dp))
@@ -383,17 +497,28 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
-/** Quieter than a filter chip: sorting reorders, it does not change the numbers. */
+/**
+ * Quieter than a filter chip: sorting reorders, it does not change the numbers.
+ *
+ * Quiet is not the same as invisible, though. Unselected sat at `mist` on paper
+ * with no bounds at all, which read as disabled text rather than as three things
+ * you can tap. The selected one now carries the sunk background every other
+ * control on this screen uses, and the rest sit at `graphite`.
+ */
 @Composable
 private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val colors = SpendTheme.colors
     Text(
         text = label,
         style = MaterialTheme.typography.labelSmall,
-        color = if (selected) colors.ink else colors.mist,
+        color = if (selected) colors.ink else colors.graphite,
         modifier = Modifier
+            .background(
+                color = if (selected) colors.paperSunk else androidx.compose.ui.graphics.Color.Transparent,
+                shape = RoundedCornerShape(6.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 4.dp)
+            .padding(horizontal = 9.dp, vertical = 5.dp)
     )
 }
 

@@ -36,8 +36,8 @@ android {
         applicationId = "com.spendlens"
         minSdk = libs.versions.minSdk.get().toInt()  // Android 8.0 - SQLCipher minimum
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 3
-        versionName = "0.1.2-alpha"
+        versionCode = 4
+        versionName = "0.1.3-alpha"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

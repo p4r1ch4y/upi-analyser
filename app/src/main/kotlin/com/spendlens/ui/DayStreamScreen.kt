@@ -64,7 +64,8 @@ data class DayStreamActions(
     val onAdd: () -> Unit = {},
     val onImport: () -> Unit = {},
     val onMore: () -> Unit = {},
-    val onQuery: (String) -> Unit = {}
+    val onQuery: (String) -> Unit = {},
+    val onClearFilter: () -> Unit = {}
 )
 
 /**
@@ -92,28 +93,41 @@ fun DayStreamScreen(
             item { TripBar(trip) }
         }
 
-        if (header != null) {
+        state.filter?.let { filter ->
+            item {
+                FilterHeader(
+                    filter = filter,
+                    matchCount = state.matchCount,
+                    totalMinor = state.matchTotalMinor,
+                    onClear = actions.onClearFilter
+                )
+            }
+        }
+
+        if (header != null && state.filter == null) {
             item { header() }
         }
 
-        item {
-            SearchField(
-                query = state.query,
-                matchCount = state.matchCount,
-                onQuery = actions.onQuery
-            )
+        if (state.filter == null) {
+            item {
+                SearchField(
+                    query = state.query,
+                    matchCount = state.matchCount,
+                    onQuery = actions.onQuery
+                )
+            }
+
+            item {
+                EntryActions(
+                    onAdd = actions.onAdd,
+                    onImport = actions.onImport,
+                    onMore = actions.onMore,
+                    busy = state.importing
+                )
+            }
         }
 
-        item {
-            EntryActions(
-                onAdd = actions.onAdd,
-                onImport = actions.onImport,
-                onMore = actions.onMore,
-                busy = state.importing
-            )
-        }
-
-        if (!state.searching) item {
+        if (!state.flattened) item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -144,12 +158,27 @@ fun DayStreamScreen(
                     color = colors.ink
                 )
 
-                Text(
-                    text = tapsAndMerchants(today?.tapCount ?: 0, today?.merchantCount ?: 0),
-                    style = typography.bodySmall,
-                    color = colors.graphite,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(top = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = tapsAndMerchants(today?.tapCount ?: 0, today?.merchantCount ?: 0),
+                        style = typography.bodySmall,
+                        color = colors.graphite
+                    )
+                    // Money in, beside the count rather than inside the headline.
+                    // The big number is what you spent and stays that way, but a
+                    // day whose only payment was incoming used to render as a bare
+                    // "₹0" above a row reading "+₹150", which looks like a fault.
+                    (today?.receivedMinor ?: 0L).takeIf { it > 0L }?.let { received ->
+                        Text(
+                            text = stringResource(R.string.day_received_in, money(received)),
+                            style = typography.bodySmall,
+                            color = colors.credit
+                        )
+                    }
+                }
 
                 TapBar(
                     transactions = today?.transactions
@@ -161,9 +190,9 @@ fun DayStreamScreen(
             }
         }
 
-        val todayTransactions = if (state.searching) emptyList() else today?.transactions.orEmpty()
+        val todayTransactions = if (state.flattened) emptyList() else today?.transactions.orEmpty()
 
-        if (todayTransactions.isEmpty() && !state.searching) {
+        if (todayTransactions.isEmpty() && !state.flattened) {
             item {
                 Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 28.dp)) {
                     Text(
@@ -185,17 +214,21 @@ fun DayStreamScreen(
             StreamRow(txn, state, actions)
         }
 
-        // Searching flattens the stream: every matching day is open, because a
-        // result list that needs unfolding is not a result list.
-        val remainingDays = if (state.searching) state.days else state.earlier
+        // Searching and filtering both flatten the stream: every matching day is
+        // open, because a result list that needs unfolding is not a result list.
+        val remainingDays = if (state.flattened) state.days else state.earlier
         items(remainingDays, key = { it.date.toEpochDay() }) { day ->
             CollapsibleDay(day, state, actions)
         }
 
-        if (state.searching && state.matchCount == 0) {
+        if (state.matchCount == 0 && state.flattened) {
             item {
                 Text(
-                    text = stringResource(R.string.search_no_matches, state.query),
+                    text = if (state.searching) {
+                        stringResource(R.string.search_no_matches, state.query)
+                    } else {
+                        stringResource(R.string.filter_no_matches)
+                    },
                     style = typography.bodySmall,
                     color = colors.mist,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp)
@@ -251,6 +284,90 @@ private fun TripBar(trip: TripBanner, modifier: Modifier = Modifier) {
 }
 
 /**
+ * What the stream is currently narrowed to, and the way out of it.
+ *
+ * Built as a hero rather than a chip because arriving here is a navigation, not a
+ * refinement: the user tapped a bar that said ₹4,320 and this has to open with
+ * the same figure, over the same window, or the trip across screens costs them
+ * their trust in both numbers.
+ */
+@Composable
+private fun FilterHeader(
+    filter: StreamFilter,
+    matchCount: Int,
+    totalMinor: Long,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(colors.paperSunk)
+            .padding(horizontal = 18.dp)
+            .padding(top = 14.dp, bottom = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        when (filter.kind) {
+                            StreamFilter.Kind.ALL -> R.string.filter_kind_all
+                            StreamFilter.Kind.MERCHANT -> R.string.filter_kind_merchant
+                            StreamFilter.Kind.TAG -> R.string.filter_kind_tag
+                            StreamFilter.Kind.CHANNEL -> R.string.filter_kind_channel
+                        }
+                    ).uppercase(Locale.ROOT),
+                    style = typography.labelSmall,
+                    color = colors.graphite
+                )
+                Text(
+                    text = filter.label,
+                    style = typography.titleLarge,
+                    color = colors.ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Text(
+                text = stringResource(R.string.filter_clear),
+                style = typography.bodySmall,
+                color = colors.ink,
+                modifier = Modifier
+                    .background(colors.paper, RoundedCornerShape(6.dp))
+                    .clickable(onClick = onClear)
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = money(totalMinor),
+                style = typography.displaySmall,
+                color = colors.ink
+            )
+            Text(
+                text = pluralStringResource(R.plurals.tap_count, matchCount, matchCount) +
+                    " · " + filter.rangeLabel,
+                style = typography.bodySmall,
+                color = colors.graphite
+            )
+        }
+    }
+}
+
+/**
  * A past day. Collapsed it is a single line; tapping opens it in place.
  *
  * Long-pressing the header ticks the whole day, which is what "mark a day as
@@ -266,7 +383,7 @@ private fun CollapsibleDay(
 ) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
-    val expanded = state.isExpanded(day.date) || state.searching
+    val expanded = state.isExpanded(day.date) || state.flattened
     val allSelected = day.transactions.isNotEmpty() && day.transactions.all { it.id in state.selected }
 
     Column(modifier = Modifier.fillMaxWidth().background(colors.paperSunk)) {
@@ -309,11 +426,20 @@ private fun CollapsibleDay(
                 modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = tapsAndMerchants(day.tapCount, day.merchantCount),
-                    style = typography.bodySmall,
-                    color = colors.graphite
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = tapsAndMerchants(day.tapCount, day.merchantCount),
+                        style = typography.bodySmall,
+                        color = colors.graphite
+                    )
+                    day.receivedMinor.takeIf { it > 0L }?.let { received ->
+                        Text(
+                            text = stringResource(R.string.day_received_in, money(received)),
+                            style = typography.bodySmall,
+                            color = colors.credit
+                        )
+                    }
+                }
                 Text(
                     text = stringResource(
                         if (expanded) R.string.day_hide else R.string.day_show

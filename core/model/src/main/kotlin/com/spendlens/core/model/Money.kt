@@ -145,6 +145,21 @@ object MoneyFormat {
         return "$symbol${groupFor(currency, major)}$fraction"
     }
 
+    /**
+     * The amount as a person would type it into a field: no symbol, no grouping,
+     * paise only when there are any.
+     *
+     * The inverse of what the entry sheets parse, so a stored limit can be put
+     * back into its own text box and come out the same number. Grouping here
+     * would be a bug - "8,000" is not something the amount parser accepts.
+     */
+    fun plain(amountMinor: Long): String {
+        val major = amountMinor / 100
+        val minor = amountMinor % 100
+        return if (minor == 0L) major.toString()
+        else "$major.${minor.toString().padStart(2, '0')}"
+    }
+
     private fun groupFor(currency: String, value: Long): String =
         if (currency == "INR") groupIndian(value) else groupWestern(value)
 

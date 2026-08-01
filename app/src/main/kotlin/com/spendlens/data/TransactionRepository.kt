@@ -7,9 +7,12 @@ import com.spendlens.core.database.SelectDayStats
 import com.spendlens.core.database.Source_messages
 import com.spendlens.core.database.SpendLensDatabase
 import com.spendlens.core.database.Transactions
+import com.spendlens.core.fusion.SourceRef
+import com.spendlens.core.fusion.canFuseAcrossSources
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.FusedTxn
 import com.spendlens.core.model.RawTxn
+import com.spendlens.core.model.Source
 import com.spendlens.core.model.TxnId
 import com.spendlens.core.resolution.MerchantResolver
 import com.spendlens.core.resolution.VpaRule
@@ -78,25 +81,57 @@ class TransactionRepository(
         }
     }
 
-    /** The existing row this raw transaction is another view of, if any. */
+    /**
+     * The existing row this raw transaction is another view of, if any.
+     *
+     * An exact RRN match is unconditional: an RRN identifies the payment itself,
+     * so two messages carrying the same one are the same payment whoever sent
+     * them.
+     *
+     * Everything else has to survive [canFuseAcrossSources] first. Matching on
+     * amount, currency and direction inside a short window cannot tell "the bank
+     * has now texted about the payment the UPI app already announced" apart from
+     * "the same shop was paid the same amount twice in three minutes" - and the
+     * second is completely ordinary. Two chais, two auto fares, a bill settled by
+     * sending ₹200 twice. What separates them is who is talking: a UPI app posts
+     * one notification per payment, so a second notification from that same
+     * package is a second payment, and merging it silently destroys one.
+     */
     suspend fun findFusionTarget(raw: RawTxn, windowMillis: Long): Transactions? = withContext(io) {
         raw.rrn?.takeIf { it.isNotBlank() }?.let { rrn ->
             queries.selectByRrn(rrn).executeAsOneOrNull()?.let { return@withContext it }
         }
         val at = raw.occurredAt ?: raw.observedAt
+        val incoming = SourceRef(raw.source, raw.sourceOrigin)
         val candidates = queries.selectFusionCandidates(
             amountMinor = raw.amountMinor,
             currency = raw.currency,
             direction = raw.direction.name,
             windowStart = at - windowMillis,
             windowEnd = at + windowMillis
-        ).executeAsList()
+        ).executeAsList().filter { candidate ->
+            canFuseAcrossSources(incoming, seenOn(candidate.id))
+        }
 
         // Prefer a candidate whose funding account matches; otherwise the nearest in time.
         raw.accountTail?.takeIf { it.isNotBlank() }?.let { tail ->
             candidates.firstOrNull { it.counterparty_vpa != null && it.rrn?.endsWith(tail) == true }
         } ?: candidates.minByOrNull { kotlin.math.abs(it.occurred_at - at) }
     }
+
+    /**
+     * The rails and senders a stored payment has already been seen on.
+     *
+     * Empty for rows captured before source messages were kept, which leaves
+     * fusion behaving exactly as it did for them - the alternative would be
+     * guessing about history the database does not hold.
+     */
+    private fun seenOn(txnId: String): List<SourceRef> =
+        queries.selectSourceOrigins(txnId).executeAsList().mapNotNull { row ->
+            val source = runCatching { Source.valueOf(row.source) }.getOrNull()
+                ?: return@mapNotNull null
+            SourceRef(source, row.origin)
+        }
 
     /**
      * Records the message a transaction was read out of.

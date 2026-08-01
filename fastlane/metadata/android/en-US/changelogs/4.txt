@@ -1,0 +1,10 @@
+Two payments to the same shop minutes apart were merged into one, so money went
+missing. Fixed — a second notification from the same app is always a second
+payment.
+
+New: budgets with a pace marker, so "half spent" reads differently from
+"spending too fast". Twelve months side by side. Every bar, column and month
+opens the payments behind it.
+
+Also: a shared Google Pay receipt files itself, and back no longer exits by
+accident.

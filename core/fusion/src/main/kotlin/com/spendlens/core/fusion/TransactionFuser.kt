@@ -4,6 +4,55 @@ import com.spendlens.core.model.RawTxn
 import com.spendlens.core.model.Source
 
 /**
+ * Where a message came from: the rail, and the app or sender within it.
+ *
+ * The origin matters as much as the rail. Two bank SMS about one payment can
+ * arrive from two different sender IDs; two notifications from the *same* UPI app
+ * are two different payments.
+ */
+data class SourceRef(val source: Source, val origin: String?)
+
+/**
+ * Whether a stored payment can be a second *view* of an incoming one, rather than
+ * a different payment that happens to cost the same.
+ *
+ * This is the rule that keeps repeat payments apart. Fusion exists because one
+ * payment is announced twice - a UPI notification and then the bank's SMS - and
+ * matching on amount, currency and direction inside a short window is how those
+ * two are recognised as one. But that same match is indistinguishable from
+ * genuinely paying the same shop the same amount twice within a few minutes,
+ * which is completely ordinary: two chais, two auto fares, splitting a bill by
+ * sending ₹200 twice.
+ *
+ * The thing that tells them apart is *who is talking*. A UPI app posts one
+ * notification per payment - it does not announce the same payment twice - so a
+ * second notification from the same package is a second payment, always. The same
+ * goes for a second SMS from the same sender ID. Only a message from a source the
+ * stored payment has not already been seen on can be another view of it.
+ *
+ * An exact RRN match is exempt and handled by the caller: an RRN identifies the
+ * payment itself, so two messages carrying one are the same payment no matter who
+ * sent them.
+ */
+fun canFuseAcrossSources(incoming: SourceRef, alreadySeenOn: List<SourceRef>): Boolean =
+    alreadySeenOn.none { seen ->
+        seen.source == incoming.source && seen.origin.equalsOrigin(incoming.origin)
+    }
+
+/**
+ * Origins compare case-insensitively, and two unknown origins count as the same.
+ *
+ * Treating null as "could be anything" would let a second notification with no
+ * package name fuse into the first, which is the exact collapse this is here to
+ * stop. Unknown is treated as one origin, not as a wildcard.
+ */
+private fun String?.equalsOrigin(other: String?): Boolean = when {
+    this == null && other == null -> true
+    this == null || other == null -> false
+    else -> equals(other, ignoreCase = true)
+}
+
+/**
  * Cross-source transaction fusion.
  * Merges fields rather than deduplicating - highest-trust source wins per field.
  */

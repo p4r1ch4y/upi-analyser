@@ -132,10 +132,21 @@
               Images too. Most UPI apps share a screenshot rather than text, and
               without this SpendLens never appears in their share sheet at all.
               The screenshot is not read - it opens manual entry with the receipt
-              still behind it.
+              shown inside the form, and the date taken from the screenshot.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <!--
+              Some gallery and UPI apps send a single screenshot as SEND_MULTIPLE
+              with one item. Without this filter SpendLens is simply missing from
+              their share sheet, which reads as the app not supporting sharing at
+              all rather than as a mismatch of intent actions.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
             </intent-filter>

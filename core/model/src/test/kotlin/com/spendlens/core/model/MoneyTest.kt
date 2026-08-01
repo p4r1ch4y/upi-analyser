@@ -70,4 +70,25 @@ class MoneyTest {
         // Not asserting the exact USD string - platform locale data owns that.
         assert(Money(2_500, "USD").formatIndian().contains("25"))
     }
+
+    /**
+     * `plain` exists so a stored amount can be put back into the text box it was
+     * typed in. Grouping or a symbol here would be a bug, not a nicety: the entry
+     * sheets' amount parser rejects both, so an ₹8,000 budget would open for
+     * editing showing "8,000" and refuse to save.
+     */
+    @Test
+    fun `plain is what the amount parser accepts back`() {
+        assertEquals("8000", MoneyFormat.plain(8_000_00))
+        assertEquals("250.05", MoneyFormat.plain(250_05))
+        assertEquals("0", MoneyFormat.plain(0))
+        assertEquals("1840000", MoneyFormat.plain(18_40_000_00))
+    }
+
+    @Test
+    fun `plain round-trips through the amount parser`() {
+        for (minor in listOf(1L, 99L, 100L, 250_05L, 8_000_00L, 18_40_000_00L)) {
+            assertEquals(minor, Money.parse(MoneyFormat.plain(minor))?.amountMinor)
+        }
+    }
 }

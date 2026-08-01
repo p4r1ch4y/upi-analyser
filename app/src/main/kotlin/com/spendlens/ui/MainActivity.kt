@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,15 +47,24 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.spendlens.R
 import com.spendlens.SpendLensApp
+import com.spendlens.core.model.Budget
+import com.spendlens.core.model.BudgetProgress
+import com.spendlens.core.model.BudgetScope
+import com.spendlens.core.model.MonthBucket
 import com.spendlens.core.model.Split
 import com.spendlens.service.QuickNoteTile
 import com.spendlens.service.ShareReceiverActivity
 import com.spendlens.service.TransactionCaptureService
 import com.spendlens.service.UpiNotificationListener
+import com.spendlens.ui.dashboard.BudgetSheet
 import com.spendlens.ui.dashboard.DashboardActions
 import com.spendlens.ui.dashboard.DashboardScreen
 import com.spendlens.ui.dashboard.DashboardViewModel
+import com.spendlens.ui.dashboard.GroupBy
+import com.spendlens.ui.dashboard.SliceSelection
+import com.spendlens.data.SharedReceiptReader
 import com.spendlens.ui.entry.AddTransactionSheet
+import com.spendlens.ui.entry.SharedReceiptPrefill
 import com.spendlens.ui.entry.ImportSheet
 import com.spendlens.ui.entry.MoreSheet
 import com.spendlens.ui.entry.PrivacySheet
@@ -69,8 +80,21 @@ import com.spendlens.ui.entry.TransactionDetailSheet
 import com.spendlens.ui.theme.SpendLensTheme
 import com.spendlens.ui.theme.LocalCurrency
 import com.spendlens.ui.theme.SpendTheme
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 private enum class Tab { STREAM, DASHBOARD }
+
+/**
+ * How long "press back again" stays armed.
+ *
+ * Long enough to be a deliberate second press, short enough that a back tapped a
+ * minute later is not read as confirming something the user has forgotten about.
+ */
+private const val BACK_TO_EXIT_WINDOW_MILLIS = 2_500L
 
 class MainActivity : ComponentActivity() {
 
@@ -91,12 +115,33 @@ class MainActivity : ComponentActivity() {
     /** Set from the launching intent, and again by onNewIntent. */
     private var pendingAction by mutableStateOf<String?>(null)
 
+    /**
+     * The receipt a share handed over, if this launch came from one.
+     *
+     * Held on the activity rather than in composition so that it survives the
+     * recomposition the action triggers, and is cleared in exactly one place -
+     * when the form that owns it closes.
+     */
+    private var pendingReceipt by mutableStateOf<SharedReceiptPrefill?>(null)
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
+    /**
+     * Asks for the inbox and the live feed together.
+     *
+     * Two permissions, two rails: `READ_SMS` reaches history from before install,
+     * `RECEIVE_SMS` is what lets the receiver fire on a message arriving. Asking
+     * for only the first left the `full` flavour with a registered `SMS_RECEIVED`
+     * receiver that could never fire — the import worked, so the feature looked
+     * healthy, while every bank SMS after install was silently missed.
+     *
+     * The import still runs on `READ_SMS` alone, because a user who grants one
+     * and refuses the other should get the history they said yes to.
+     */
     private val requestSmsPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) viewModel.importSmsHistory()
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+            if (granted[Manifest.permission.READ_SMS] == true) viewModel.importSmsHistory()
         }
 
     private val pickStatement =
@@ -123,6 +168,7 @@ class MainActivity : ComponentActivity() {
         listenerEnabled = isNotificationListenerEnabled()
         requestPostNotificationsIfNeeded()
         pendingAction = intent?.action
+        pendingReceipt = intent?.readReceiptPrefill()
 
         setContent {
             // Read as state so a tile tap while the app is already open still
@@ -151,6 +197,9 @@ class MainActivity : ComponentActivity() {
                 var renameTarget by remember { mutableStateOf<String?>(null) }
                 var renameSimilarCount by remember { mutableStateOf(0) }
                 var openTxnId by remember { mutableStateOf<String?>(null) }
+                // Null means "no sheet"; a present holder means "sheet open", and
+                // its budget is null when the sheet is creating rather than editing.
+                var budgetSheet by remember { mutableStateOf<BudgetSheetTarget?>(null) }
 
                 // The Quick Settings tile lands here: open the newest payment so
                 // the note can be typed while the user still remembers what it
@@ -160,7 +209,7 @@ class MainActivity : ComponentActivity() {
                         QuickNoteTile.ACTION_NOTE_LATEST ->
                             viewModel.mostRecentId()?.let { openTxnId = it }
                         TransactionCaptureService.ACTION_ADD_PAYMENT,
-                        ShareReceiverActivity.ACTION_ADD_FROM_IMAGE -> showAddSheet = true
+                        ShareReceiverActivity.ACTION_ADD_FROM_RECEIPT -> showAddSheet = true
                     }
                 }
                 var openSplit by remember { mutableStateOf<Split?>(null) }
@@ -182,6 +231,41 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(openTxnId, state.days) {
                     openSplit = openTxnId?.let { viewModel.splitDetail(it) }
                     openSources = openTxnId?.let { viewModel.sourcesFor(it) }.orEmpty()
+                }
+
+                // ------------------------------------------------------- back
+                //
+                // Back used to close the app from anywhere, which made it a trap
+                // while reading: one stray press in the middle of checking a
+                // month and the whole screen is gone.
+                //
+                // So back now unwinds what is actually on screen, innermost
+                // first, and only leaves once there is nothing left to undo -
+                // and even then it asks. Bottom sheets are absent from this list
+                // because ModalBottomSheet consumes back itself before this runs.
+                var exitArmed by remember { mutableStateOf(false) }
+
+                LaunchedEffect(exitArmed) {
+                    if (!exitArmed) return@LaunchedEffect
+                    launch {
+                        snackbarHostState.showSnackbar(
+                            context.getString(R.string.back_again_to_exit),
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                    delay(BACK_TO_EXIT_WINDOW_MILLIS)
+                    exitArmed = false
+                }
+
+                BackHandler {
+                    when {
+                        state.selecting -> viewModel.clearSelection()
+                        state.filter != null -> viewModel.clearFilter()
+                        state.searching -> viewModel.setQuery("")
+                        tab != Tab.STREAM -> tab = Tab.STREAM
+                        exitArmed -> finish()
+                        else -> exitArmed = true
+                    }
                 }
 
                 CompositionLocalProvider(LocalCurrency provides currency) {
@@ -216,7 +300,8 @@ class MainActivity : ComponentActivity() {
                                 onAdd = { showAddSheet = true },
                                 onImport = { showImportSheet = true },
                                 onMore = { showMoreSheet = true },
-                                onQuery = viewModel::setQuery
+                                onQuery = viewModel::setQuery,
+                                onClearFilter = viewModel::clearFilter
                             ),
                             modifier = Modifier
                                 .fillMaxSize()
@@ -232,7 +317,37 @@ class MainActivity : ComponentActivity() {
                                 onRange = dashboardViewModel::setRange,
                                 onDirection = dashboardViewModel::setDirection,
                                 onGroupBy = dashboardViewModel::setGroupBy,
-                                onSortBy = dashboardViewModel::setSortBy
+                                onSortBy = dashboardViewModel::setSortBy,
+                                // A bar is a way in, not a dead end: it hands the
+                                // stream the group *and* the window, so the two
+                                // screens cannot disagree about the same figure.
+                                onOpenSlice = { slice ->
+                                    viewModel.setFilter(
+                                        slice.toStreamFilter(
+                                            context.getString(
+                                                R.string.filter_range_days,
+                                                dashboard.range.days
+                                            )
+                                        )
+                                    )
+                                    tab = Tab.STREAM
+                                },
+                                onOpenBudget = { progress ->
+                                    viewModel.setFilter(progress.toStreamFilter())
+                                    tab = Tab.STREAM
+                                },
+                                onEditBudget = { budgetSheet = BudgetSheetTarget(it.budget) },
+                                onNewBudget = { budgetSheet = BudgetSheetTarget(null) },
+                                onOpenDay = { date ->
+                                    viewModel.setFilter(
+                                        dayFilter(date, context.getString(R.string.filter_kind_day))
+                                    )
+                                    tab = Tab.STREAM
+                                },
+                                onOpenMonth = { month ->
+                                    viewModel.setFilter(month.toStreamFilter())
+                                    tab = Tab.STREAM
+                                }
                             ),
                             modifier = Modifier
                                 .fillMaxSize()
@@ -299,6 +414,33 @@ class MainActivity : ComponentActivity() {
                             showSplitSheet = false
                             splitTarget = null
                             dashboardViewModel.refresh()
+                        }
+                    )
+                }
+
+                budgetSheet?.let { target ->
+                    BudgetSheet(
+                        existing = target.budget,
+                        namesFor = dashboardViewModel::budgetableNames,
+                        suggestLimitMinor = dashboardViewModel::suggestedLimitMinor,
+                        onDismiss = { budgetSheet = null },
+                        onSubmit = { draft ->
+                            dashboardViewModel.saveBudget(
+                                id = draft.id,
+                                name = draft.name,
+                                scope = draft.scope,
+                                scopeValue = draft.scopeValue,
+                                period = draft.period,
+                                limitMinor = draft.limitMinor,
+                                currency = currency
+                            )
+                            budgetSheet = null
+                            viewModel.report(context.getString(R.string.budget_saved))
+                        },
+                        onDelete = { id ->
+                            dashboardViewModel.deleteBudget(id)
+                            budgetSheet = null
+                            viewModel.report(context.getString(R.string.budget_removed))
                         }
                     )
                 }
@@ -387,10 +529,17 @@ class MainActivity : ComponentActivity() {
 
                 if (showAddSheet) {
                     AddTransactionSheet(
-                        onDismiss = { showAddSheet = false },
+                        // Present only when this launch came from a share the
+                        // parser could not read; otherwise an ordinary entry form.
+                        receipt = pendingReceipt,
+                        onDismiss = {
+                            showAddSheet = false
+                            discardReceipt()
+                        },
                         onSubmit = { entry ->
                             viewModel.addManual(entry)
                             showAddSheet = false
+                            discardReceipt()
                             dashboardViewModel.refresh()
                         }
                     )
@@ -423,6 +572,44 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingAction = intent.action
+        // A second share while the app is already open replaces the first, so
+        // the staged copy of the first is dropped rather than left in the cache.
+        intent.readReceiptPrefill()?.let { fresh ->
+            discardReceipt()
+            pendingReceipt = fresh
+        }
+    }
+
+    private fun Intent.readReceiptPrefill(): SharedReceiptPrefill? {
+        if (action != ShareReceiverActivity.ACTION_ADD_FROM_RECEIPT) return null
+        val path = getStringExtra(ShareReceiverActivity.EXTRA_RECEIPT_PATH)
+        val text = getStringExtra(ShareReceiverActivity.EXTRA_RECEIPT_TEXT)
+        if (path == null && text.isNullOrBlank()) return null
+        return SharedReceiptPrefill(
+            imagePath = path,
+            takenAt = getLongExtra(ShareReceiverActivity.EXTRA_RECEIPT_TAKEN_AT, 0L)
+                .takeIf { it > 0L },
+            text = text
+        )
+    }
+
+    /**
+     * Deletes the staged receipt.
+     *
+     * The app holds a copy of a payment screenshot for exactly as long as the
+     * form in front of the user needs it. Called whether the entry was saved or
+     * abandoned, because an abandoned one is no less private.
+     */
+    private fun discardReceipt() {
+        SharedReceiptReader.discard(this, pendingReceipt?.imagePath?.let { File(it) })
+        pendingReceipt = null
+        // The launching intent is re-read on every recreation, so leaving the
+        // action on it would reopen the form after a rotation - pointing at a
+        // receipt that has just been deleted.
+        if (intent?.action == ShareReceiverActivity.ACTION_ADD_FROM_RECEIPT) {
+            intent.action = null
+            pendingAction = null
+        }
     }
 
     override fun onResume() {
@@ -439,9 +626,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun importSmsHistory() {
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (granted) viewModel.importSmsHistory() else requestSmsPermission.launch(Manifest.permission.READ_SMS)
+        // Anything still outstanding is asked for, not just what the import
+        // itself needs: a user who has granted READ_SMS but never been asked for
+        // RECEIVE_SMS has a live rail that cannot fire and no way to discover it.
+        val outstanding = viewModel.smsPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (outstanding.isEmpty()) {
+            viewModel.importSmsHistory()
+        } else {
+            requestSmsPermission.launch(outstanding.toTypedArray())
+        }
     }
 
     private fun requestPostNotificationsIfNeeded() {
@@ -519,6 +714,81 @@ private fun TabPill(text: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Which budget the sheet is on, if any.
+ *
+ * A wrapper rather than a bare `Budget?`, because null has to mean two different
+ * things - "no sheet" and "a sheet that is creating one".
+ */
+private data class BudgetSheetTarget(val budget: Budget?)
+
+/** The payments behind one bar, over the window the bar was measured across. */
+private fun SliceSelection.toStreamFilter(rangeLabel: String) = StreamFilter(
+    kind = when (groupBy) {
+        GroupBy.MERCHANT -> StreamFilter.Kind.MERCHANT
+        GroupBy.TAG -> StreamFilter.Kind.TAG
+        GroupBy.CHANNEL -> StreamFilter.Kind.CHANNEL
+    },
+    value = key,
+    label = label,
+    sinceMillis = sinceMillis,
+    untilMillis = untilMillis,
+    rangeLabel = rangeLabel,
+    credits = credits
+)
+
+private val BUDGET_WINDOW_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH)
+
+/**
+ * The payments inside a budget's own period.
+ *
+ * The window comes from the budget rather than from the range chips, which is the
+ * whole point: a monthly limit is measured over its month whatever the report
+ * above it happens to be showing.
+ */
+private fun BudgetProgress.toStreamFilter(
+    zone: ZoneId = ZoneId.systemDefault()
+) = StreamFilter(
+    kind = when (budget.scope) {
+        BudgetScope.TOTAL -> StreamFilter.Kind.ALL
+        BudgetScope.TAG -> StreamFilter.Kind.TAG
+        BudgetScope.MERCHANT -> StreamFilter.Kind.MERCHANT
+    },
+    value = budget.scopeValue.orEmpty(),
+    label = budget.name,
+    sinceMillis = start.atStartOfDay(zone).toInstant().toEpochMilli(),
+    untilMillis = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+    rangeLabel = start.format(BUDGET_WINDOW_FORMAT) + " – " + end.format(BUDGET_WINDOW_FORMAT)
+)
+
+private val DAY_FILTER_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEE d MMM yyyy", java.util.Locale.ENGLISH)
+
+/** One day off the spend-by-day chart, opened in the stream. */
+private fun dayFilter(
+    date: java.time.LocalDate,
+    kindLabel: String,
+    zone: ZoneId = ZoneId.systemDefault()
+) = StreamFilter(
+    kind = StreamFilter.Kind.ALL,
+    value = "",
+    label = date.format(DAY_FILTER_FORMAT),
+    sinceMillis = date.atStartOfDay(zone).toInstant().toEpochMilli(),
+    untilMillis = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+    rangeLabel = kindLabel
+)
+
+/** A whole month off the comparison, opened in the stream. */
+private fun MonthBucket.toStreamFilter(zone: ZoneId = ZoneId.systemDefault()) = StreamFilter(
+    kind = StreamFilter.Kind.ALL,
+    value = "",
+    label = start.format(DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.ENGLISH)),
+    sinceMillis = start.atStartOfDay(zone).toInstant().toEpochMilli(),
+    untilMillis = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+    rangeLabel = start.format(BUDGET_WINDOW_FORMAT) + " – " + end.format(BUDGET_WINDOW_FORMAT)
+)
+
 /** Renders a one-shot event into user-facing text. */
 private fun android.content.Context.describe(event: DayStreamEvent): String = when (event) {
     is DayStreamEvent.Imported -> {
@@ -539,6 +809,7 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
     DayStreamEvent.Copied -> getString(R.string.settings_copied)
     DayStreamEvent.Renamed -> getString(R.string.renamed)
+    is DayStreamEvent.Message -> event.text
     DayStreamEvent.NoteSaved -> getString(R.string.note_saved)
     is DayStreamEvent.RenamedMany -> getString(R.string.renamed_many, event.count)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")

@@ -49,6 +49,8 @@ data class TxnUi(
     val failed: Boolean = false,
     val note: String? = null,
     val counterpartyVpa: String?,
+    /** The rail, as stored. Null when the message never said. */
+    val channel: String? = null,
     val split: SplitSummary? = null,
     val tags: List<TagRef> = emptyList()
 ) {
@@ -85,14 +87,76 @@ data class TxnUi(
     }
 }
 
+/**
+ * The payments behind one bar on the Insights breakdown.
+ *
+ * Carries the window as well as the group, because the two screens must agree.
+ * Tapping a bar that reads ₹4,320 over the last 30 days and landing on a stream
+ * showing a year's ₹51,000 for the same payee does not read as "a different
+ * range" - it reads as one of the two numbers being wrong.
+ */
+data class StreamFilter(
+    val kind: Kind,
+    /** The stored value to match: a display name, a tag name, or a channel. */
+    val value: String,
+    /** The value as the breakdown showed it, which is what the bar says. */
+    val label: String,
+    val sinceMillis: Long,
+    val untilMillis: Long,
+    /** "last 30 days", or the budget's own window. Shown, never parsed. */
+    val rangeLabel: String,
+    /**
+     * Which side of the ledger the bar was measuring.
+     *
+     * Insights flips its whole report between expense and income, so a bar tapped
+     * while it is showing income is about credits. Without this the stream would
+     * open on the debits to the same payee and report a total of zero.
+     */
+    val credits: Boolean = false
+) {
+    /** [ALL] narrows by window alone, which is what a total budget is. */
+    enum class Kind { ALL, MERCHANT, TAG, CHANNEL }
+
+    fun matches(txn: TxnUi): Boolean {
+        if (txn.occurredAt < sinceMillis || txn.occurredAt >= untilMillis) return false
+        if (txn.isCredit != credits) return false
+        return when (kind) {
+            Kind.ALL -> true
+            Kind.MERCHANT -> txn.displayName == value
+            Kind.TAG -> txn.tags.any { it.name == value }
+            // The breakdown folds every unnamed rail into one "Other" bar, so the
+            // filter behind it has to accept a null channel too.
+            Kind.CHANNEL -> (txn.channel ?: UNKNOWN_CHANNEL) == value
+        }
+    }
+
+    companion object {
+        const val UNKNOWN_CHANNEL = "UNKNOWN"
+    }
+}
+
 /** A calendar day of payments, newest day first. */
 data class DayUi(
     val date: LocalDate,
     val spentMinor: Long,
+    /**
+     * Money that came in on this day.
+     *
+     * Held separately rather than netted off, because the day total is a
+     * *spending* figure and always has been - netting a salary against a week of
+     * chai would make the number meaningless. But it cannot simply be dropped
+     * either: a day whose only payment was an incoming ₹150 rendered as a bare
+     * "₹0" above a row plainly showing "+₹150", which reads as the app having
+     * lost track rather than as "you spent nothing".
+     */
+    val receivedMinor: Long = 0L,
     val transactions: List<TxnUi>
 ) {
     val tapCount: Int get() = transactions.size
     val merchantCount: Int get() = transactions.map { it.displayName }.distinct().size
+
+    /** True when the day has money in but nothing out, which is what looked broken. */
+    val receivedOnly: Boolean get() = receivedMinor > 0L && spentMinor == 0L
 }
 
 /** The trip banner across the top of the stream. */
@@ -115,11 +179,39 @@ data class DayStreamUiState(
     val trip: TripBanner? = null,
     val allTags: List<TagRef> = emptyList(),
     /** Non-blank while the user is searching; the stream shows only matches. */
-    val query: String = ""
+    val query: String = "",
+    /** Set when the stream was opened from a bar on Insights or from a budget. */
+    val filter: StreamFilter? = null
 ) {
     val searching: Boolean get() = query.isNotBlank()
 
+    /**
+     * True when the stream is answering a question rather than showing a diary.
+     *
+     * Both searching and filtering flatten it: every matching day is open, the
+     * today hero is gone, and empty days are not drawn. A result list that needs
+     * unfolding is not a result list.
+     */
+    val flattened: Boolean get() = searching || filter != null
+
     val matchCount: Int get() = days.sumOf { it.transactions.size }
+
+    /**
+     * What the filtered payments came to, measured the same way the bar was.
+     *
+     * Failed payments are shown in the rows and left out of the figure, exactly
+     * as the analytics queries do - this number has to be the one the user just
+     * tapped, or the trip between the two screens costs them their trust in both.
+     */
+    val matchTotalMinor: Long
+        get() {
+            val credits = filter?.credits ?: false
+            return days.sumOf { day ->
+                day.transactions
+                    .filter { it.isCredit == credits && !it.failed }
+                    .sumOf { it.effectiveMinor }
+            }
+        }
 
     val today: DayUi? get() = days.firstOrNull()
     val earlier: List<DayUi> get() = days.drop(1)
@@ -146,6 +238,15 @@ sealed interface DayStreamEvent {
     data object Renamed : DayStreamEvent
     data object NoteSaved : DayStreamEvent
     data class RenamedMany(val count: Int) : DayStreamEvent
+    /**
+     * Already-resolved text, for confirmations owned by another screen.
+     *
+     * The rest of this sealed interface is deliberately typed so the UI owns the
+     * wording, but a budget is saved from a sheet that already has the string;
+     * inventing a `BudgetSaved` case to re-look-up the same resource would be
+     * ceremony, not clarity.
+     */
+    data class Message(val text: String) : DayStreamEvent
     data class Imported(val summary: TransactionIngestor.BatchSummary) : DayStreamEvent
     data object TransactionAdded : DayStreamEvent
     data object ListenerNotConnected : DayStreamEvent
@@ -205,6 +306,11 @@ class DayStreamViewModel(
         viewModelScope.launch { _events.send(DayStreamEvent.Copied) }
     }
 
+    /** Shows a message another screen has already worded. */
+    fun report(text: String) {
+        viewModelScope.launch { _events.send(DayStreamEvent.Message(text)) }
+    }
+
     fun setCurrency(code: String) {
         settings.currency = code   // also updates MoneyFormat
         _currency.value = code
@@ -228,8 +334,23 @@ class DayStreamViewModel(
     private val expanded = MutableStateFlow<Set<LocalDate>>(emptySet())
     private val selected = MutableStateFlow<Set<String>>(emptySet())
     private val query = MutableStateFlow("")
+    private val filter = MutableStateFlow<StreamFilter?>(null)
 
     fun setQuery(value: String) { query.value = value }
+
+    /**
+     * Opens the stream on the payments behind one bar of the breakdown.
+     *
+     * Any search in progress is dropped: the two are different questions, and
+     * arriving from Insights to find the results narrowed by a word typed ten
+     * minutes ago would read as the filter having failed.
+     */
+    fun setFilter(value: StreamFilter?) {
+        filter.value = value
+        if (value != null) query.value = ""
+    }
+
+    fun clearFilter() { filter.value = null }
 
     private val _events = Channel<DayStreamEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
@@ -241,12 +362,12 @@ class DayStreamViewModel(
         annotations.splitsSince(since),
         annotations.tagLinksSince(since),
         annotations.allTags(),
-        combine(importing, expanded, selected, query) { busy, open, ticked, text ->
-            StreamControls(busy, open, ticked, text)
+        combine(importing, expanded, selected, query, filter) { busy, open, ticked, text, scope ->
+            StreamControls(busy, open, ticked, text, scope)
         }
     ) { rows, splits, tagLinks, tags, controls ->
-        val (busy, open, ticked, text) = controls
-        val days = groupByDay(rows, splits, tagLinks, text)
+        val (busy, open, ticked, text, scope) = controls
+        val days = groupByDay(rows, splits, tagLinks, text, scope)
         DayStreamUiState(
             days = days,
             loading = false,
@@ -255,14 +376,20 @@ class DayStreamViewModel(
             // A row that has since been deleted must not stay ticked, or the
             // action bar offers to split payments that are no longer there.
             selected = ticked intersect days.flatMap { day -> day.transactions.map { it.id } }.toSet(),
-            trip = if (text.isBlank()) tripBanner(days, tags) else null,
+            // The banner answers "how is the trip going", which is not the
+            // question either a search or a breakdown filter is asking.
+            trip = if (text.isBlank() && scope == null) tripBanner(days, tags) else null,
             allTags = tags,
-            query = text
+            query = text,
+            filter = scope
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayStreamUiState())
 
     /** True when this build can read SMS at all, so the UI can hide the option. */
     val smsSupported: Boolean get() = smsImporter.declaresReadSms()
+
+    /** The SMS permissions this build declares, so the UI asks for all of them at once. */
+    val smsPermissions: List<String> get() = smsImporter.declaredSmsPermissions()
 
     // -------------------------------------------------------------- expansion
 
@@ -527,17 +654,20 @@ class DayStreamViewModel(
         rows: List<Transactions>,
         splits: Map<String, SplitSummary>,
         tagLinks: Map<String, List<TagRef>>,
-        query: String
+        query: String,
+        filter: StreamFilter?
     ): List<DayUi> {
         val today = Days.localDate(System.currentTimeMillis(), zone)
         val byDate = rows
             .map { it.toUi(splits[it.id], tagLinks[it.id].orEmpty()) }
+            .filter { filter == null || filter.matches(it) }
             .filter { it.matches(query) }
             .groupBy { Days.localDate(it.occurredAt, zone) }
 
-        // While searching, an empty day is noise - the user asked a question and
-        // wants the answers, not a calendar with a gap where today would be.
-        val dates = if (query.isNotBlank()) {
+        // While searching or filtered, an empty day is noise - the user asked a
+        // question and wants the answers, not a calendar with a gap where today
+        // would be.
+        val dates = if (query.isNotBlank() || filter != null) {
             byDate.keys.sortedDescending()
         } else {
             // Otherwise today always renders even when empty: the empty state
@@ -551,6 +681,9 @@ class DayStreamViewModel(
                 date = date,
                 spentMinor = transactions
                     .filter { !it.isCredit && !it.failed }
+                    .sumOf { it.effectiveMinor },
+                receivedMinor = transactions
+                    .filter { it.isCredit && !it.failed }
                     .sumOf { it.effectiveMinor },
                 transactions = transactions
             )
@@ -606,6 +739,7 @@ class DayStreamViewModel(
         failed = (flags and FusedTxn.FLAG_FAILED.toLong()) != 0L,
         note = note,
         counterpartyVpa = counterparty_vpa,
+        channel = channel,
         split = split,
         tags = tags
     )
@@ -615,7 +749,8 @@ class DayStreamViewModel(
         val importing: Boolean,
         val expanded: Set<LocalDate>,
         val selected: Set<String>,
-        val query: String
+        val query: String,
+        val filter: StreamFilter?
     )
 
     companion object {
