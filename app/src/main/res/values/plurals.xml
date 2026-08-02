@@ -39,4 +39,33 @@
         <item quantity="one">%d smaller row not shown</item>
         <item quantity="other">%d smaller rows not shown</item>
     </plurals>
+    <!--
+      Counted actions. "Split 1 payments" and "Tagged 1 payments as Dinner" both
+      appeared on screen, for the same reason the tap counts did: a format string
+      cannot be made to agree with its own number.
+    -->
+    <plurals name="split_title">
+        <item quantity="one">Split this payment</item>
+        <item quantity="other">Split %d payments</item>
+    </plurals>
+    <plurals name="tag_title">
+        <item quantity="one">Tag this payment</item>
+        <item quantity="other">Tag %d payments</item>
+    </plurals>
+    <plurals name="split_applied">
+        <item quantity="one">Split 1 payment</item>
+        <item quantity="other">Split %d payments</item>
+    </plurals>
+    <plurals name="tagged_result">
+        <item quantity="one">Tagged 1 payment as %2$s</item>
+        <item quantity="other">Tagged %1$d payments as %2$s</item>
+    </plurals>
+    <plurals name="renamed_many">
+        <item quantity="one">Renamed 1 payment</item>
+        <item quantity="other">Renamed %d payments</item>
+    </plurals>
+    <plurals name="selection_count">
+        <item quantity="one">1 selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
 </resources>

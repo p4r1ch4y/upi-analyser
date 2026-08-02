@@ -13,7 +13,7 @@ holds no `INTERNET` permission at all.
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84.svg)](#build-from-source)
 [![No INTERNET permission](https://img.shields.io/badge/INTERNET%20permission-none-success.svg)](#privacy-you-can-check-yourself)
-[![Tests](https://img.shields.io/badge/tests-102%20passing-success.svg)](#build-from-source)
+[![Tests](https://img.shields.io/badge/tests-192%20passing-success.svg)](#build-from-source)
 
 <br>
 
@@ -34,11 +34,11 @@ holds no `INTERNET` permission at all.
 <div align="center">
 
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="185" alt="The day stream">&nbsp;
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="185" alt="Split detail">&nbsp;
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="185" alt="A split payment, with the message it was read from">&nbsp;
 <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="185" alt="Insights">&nbsp;
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="185" alt="Splitting a payment">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="185" alt="Month by month, budgets and the breakdown">
 
-<sub>The day stream · a split payment · insights · splitting between people</sub>
+<sub>The day stream · a split payment, and the message it was read from · insights · month by month, budgets, breakdown</sub>
 
 </div>
 
@@ -64,15 +64,17 @@ you do not recognise a pie chart.
 | **Takes manual entries** | Cash and anything else it cannot see, with the date and time you choose |
 | **Splits** | A payment, a whole day, or any selection — between named people, tracking who has paid you back |
 | **Tags and trips** | A trip is a tag that knows its own dates, so the header can tell you how far through it you are |
-| **Shows you the shape of it** | Spending by day, merchant, tag and rail, over 7, 30 or 90 days |
+| **Shows you the shape of it** | Spending by day, merchant, tag and rail, over 7, 30, 90 or 365 days — and twelve months side by side |
+| **Keeps you to a limit** | Budgets for everything, one tag or one payee, each with a pace marker so "half spent" reads differently from "spending too fast" |
+| **Opens every chart** | Tap any bar, column or month to see exactly the payments behind it |
 
 <div align="center">
 
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="185" alt="Adding a transaction">&nbsp;
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="185" alt="Import options">&nbsp;
-<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/7.png" width="185" alt="First run">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" width="185" alt="Setting a budget">&nbsp;
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/6.png" width="185" alt="Adding a transaction">&nbsp;
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/7.png" width="185" alt="Import options">
 
-<sub>manual entry · import · first run</sub>
+<sub>setting a budget, opened at what you already spend · manual entry · import</sub>
 
 </div>
 
@@ -132,6 +134,17 @@ and there is no backup format yet. Pick one source and stay on it.
 </details>
 
 ## Privacy you can check yourself
+
+<div align="center">
+
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/8.png" width="300" alt="What this app can reach — the in-app permission panel">
+
+<sub><b>The app audits itself.</b> This screen is not a hand-written list — it reads
+the installed manifest back out of the package manager at runtime, using the same
+API any auditor would, and shows every permission held with its grant state.
+A screen that could lie about this would be worth nothing.</sub>
+
+</div>
 
 Not a policy — a property of the binary. Run this on the APK you downloaded:
 

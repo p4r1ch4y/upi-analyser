@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.input.KeyboardType
@@ -510,7 +511,7 @@ fun SplitSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.split_title, paymentCount),
+                text = pluralStringResource(R.plurals.split_title, paymentCount, paymentCount),
                 style = typography.titleLarge,
                 color = colors.ink
             )
@@ -601,7 +602,7 @@ fun TagSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.tag_title, paymentCount),
+                text = pluralStringResource(R.plurals.tag_title, paymentCount, paymentCount),
                 style = typography.titleLarge,
                 color = colors.ink
             )

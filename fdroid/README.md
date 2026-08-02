@@ -20,14 +20,14 @@ SMS is the only rail that can recover spending from before installation.
 |---|---|
 | Public repo with real source | [gitlab.com/p4r1ch4y-group/SpendLens](https://gitlab.com/p4r1ch4y-group/SpendLens) — verified: anonymous clone succeeds |
 | FOSS licence file | `LICENSE` — GPL-3.0 |
-| Version tag per release | `v0.1.1-alpha` (versionCode 2) |
+| Version tag per release | `v0.1.3-alpha` (versionCode 4) |
 | Builds from a clean checkout | **verified** — anonymous clone at the tag builds `app-standard-release-unsigned.apk`, which is exactly what F-Droid signs |
 | Only FOSS dependencies | verified, see below |
 | No Google Play Services / Firebase | none — the app has no `INTERNET` permission at all |
 | No ads, tracking, or proprietary services | none |
 | No binary blobs in the source tree | only `gradle/wrapper/gradle-wrapper.jar`, which F-Droid replaces |
 | fastlane metadata | `fastlane/metadata/android/en-US/` |
-| Screenshots | 7, in `fastlane/metadata/android/en-US/images/phoneScreenshots/` |
+| Screenshots | 8, in `fastlane/metadata/android/en-US/images/phoneScreenshots/` |
 
 ## Dependency licences
 
@@ -86,10 +86,16 @@ the actual shape of the decision — a second build flavour, not a default.
 
 ## Screenshots
 
-Seven, all from a clean install with invented data, in
+Eight, all from a clean install with invented data, in
 `fastlane/metadata/android/en-US/images/phoneScreenshots/`, ordered as a story:
-the stream, a split payment's detail, insights, the split sheet, manual entry,
-import, and the first-run permission gate.
+the stream, a split payment's detail with the message it was read from, insights,
+month by month with budgets and the breakdown, the budget sheet, manual entry,
+import, and the permission panel.
+
+Taken by clearing the app, importing an invented CSV statement, and driving the
+UI over adb with the system UI in demo mode, so the status bar carries a fixed
+clock and no personal notification icons. The ledger behind them is entirely
+made up — Chai Point, Big Basket, Anita and Ravi are not anybody.
 
 Screenshots of a real ledger must never be committed. One taken during this pass
 showed a genuine counterparty's full name against a real transaction and was
@@ -103,7 +109,7 @@ just assumed:
 
 ```bash
 # the exact operation F-Droid's build server performs
-git clone --branch v0.1.1-alpha --depth 1 \
+git clone --branch v0.1.3-alpha --depth 1 \
   https://gitlab.com/p4r1ch4y-group/SpendLens.git
 cd SpendLens && ./gradlew assembleStandardRelease
 # -> app-standard-release-unsigned.apk

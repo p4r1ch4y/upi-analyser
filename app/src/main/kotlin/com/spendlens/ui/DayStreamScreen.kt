@@ -692,7 +692,7 @@ fun SelectionBar(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stringResource(R.string.selection_count, count),
+                text = pluralStringResource(R.plurals.selection_count, count, count),
                 style = typography.bodySmall,
                 color = colors.paper
             )

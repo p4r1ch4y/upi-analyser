@@ -802,8 +802,8 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.TransactionAdded -> getString(R.string.add_result)
     DayStreamEvent.ListenerNotConnected -> getString(R.string.import_listener_not_connected)
     DayStreamEvent.SmsUnavailable -> getString(R.string.import_sms_unavailable)
-    is DayStreamEvent.SplitApplied -> getString(R.string.split_applied, event.count)
-    is DayStreamEvent.Tagged -> getString(R.string.tagged_result, event.count, event.tagName)
+    is DayStreamEvent.SplitApplied -> resources.getQuantityString(R.plurals.split_applied, event.count, event.count)
+    is DayStreamEvent.Tagged -> resources.getQuantityString(R.plurals.tagged_result, event.count, event.count, event.tagName)
     is DayStreamEvent.Exported -> getString(R.string.export_done, event.rowCount)
     DayStreamEvent.NoEmailApp -> getString(R.string.settings_no_email_app)
     DayStreamEvent.NoBrowser -> getString(R.string.settings_no_browser)
@@ -811,7 +811,7 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
     DayStreamEvent.Renamed -> getString(R.string.renamed)
     is DayStreamEvent.Message -> event.text
     DayStreamEvent.NoteSaved -> getString(R.string.note_saved)
-    is DayStreamEvent.RenamedMany -> getString(R.string.renamed_many, event.count)
+    is DayStreamEvent.RenamedMany -> resources.getQuantityString(R.plurals.renamed_many, event.count, event.count)
     is DayStreamEvent.Failed -> getString(R.string.import_failed, event.reason ?: "")
 }
 

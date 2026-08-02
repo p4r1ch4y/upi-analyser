@@ -80,7 +80,6 @@
     <string name="trip_day_of">day %1$d of %2$d</string>
 
     <!-- Selection -->
-    <string name="selection_count">%1$d selected</string>
     <string name="action_split">Split</string>
     <string name="action_unsplit">Remove split</string>
     <string name="action_tag">Tag</string>
@@ -89,7 +88,6 @@
     <string name="action_add_short">Add</string>
 
     <!-- Split -->
-    <string name="split_title">Split %1$d payments</string>
     <string name="split_total">Total %1$s</string>
     <string name="split_ways">How many ways</string>
     <string name="split_names">Names (optional)</string>
@@ -100,17 +98,14 @@
     <string name="you_paid">You paid</string>
     <string name="your_share">Your share</string>
     <string name="owed_to_you">Owed to you</string>
-    <string name="split_applied">Split %1$d payments</string>
 
     <!-- Tags -->
     <string name="tags">Tags</string>
     <string name="add_tag">Add tag</string>
-    <string name="tag_title">Tag %1$d payments</string>
     <string name="tag_name">Tag name</string>
     <string name="tag_plain">Tag</string>
     <string name="tag_trip">Trip</string>
     <string name="tag_trip_hint">A trip spans the days of the payments you tag, so the home screen can show how far through it you are.</string>
-    <string name="tagged_result">Tagged %1$d payments as %2$s</string>
 
     <!-- Dashboard -->
     <string name="tab_stream">Stream</string>
@@ -220,7 +215,6 @@
     <!-- Bulk rename -->
     <string name="rename_similar">Also rename %1$d payments like this</string>
     <string name="rename_similar_note">Same source and same amount — usually the same recurring thing.</string>
-    <string name="renamed_many">Renamed %1$d payments</string>
 
     <!-- Notes -->
     <string name="note_label">Note</string>
