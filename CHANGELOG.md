@@ -11,6 +11,13 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+## [0.1.4-alpha] — 2026-08-27
+
+Everything here was found or verified by running the build on a handset —
+including two things that only appear on someone else's phone: an Android
+version that blocks the app outright, and a display size that is not the
+author's.
+
 ### Added
 
 - **Group the breakdown by amount.** "₹45 — 5 times · ₹225 altogether" answers a
@@ -47,6 +54,24 @@ characters — this file is the long form.
   "Show", because `SpaceBetween` will happily overlap two children rather than
   shrink either. Both rows now give the left group a weight and ellipsize.
   Reproduced at 1.3× font on a 540dpi display and re-checked after the fix.
+- **"Split 1 payments"** and **"Tagged 1 payments as Dinner"** — caught while
+  photographing the app for the README. Same cause as the tap counts before them:
+  a format string cannot be made to agree with its own number. Those, the
+  selection count and the rename result are plurals now.
+
+### Changed
+
+- **New screenshots**, retaken from a cleared install seeded with an invented
+  statement, since the published set predated budgets, month-by-month and the
+  drill-through. The permission panel is now among them and sits inside the
+  README's privacy section, because it is the one screen that argues the
+  product's whole claim — and argues it by reading the installed manifest back
+  out of the package manager rather than printing a list somebody typed.
+
+### Measured
+
+- Scrolling Insights: 435 frames, **0.92% janky**, 50th percentile 7ms, 99th
+  20ms. No jank fix was needed, so none was invented.
 
 ## [0.1.3-alpha] — 2026-08-01
 

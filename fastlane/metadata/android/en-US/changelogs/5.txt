@@ -1,0 +1,7 @@
+Group your spending by amount: "₹45 — 5 times". A ledger of everyday payments is
+mostly a short list of prices repeated, and how often ₹100 leaves your account is
+a different question from which shop it went to.
+
+Also: pick your own date range, set the app's display size without changing every
+other app, and — if Android blocked notification access because you installed
+from an APK — four taps that fix it.

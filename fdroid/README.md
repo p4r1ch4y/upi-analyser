@@ -20,7 +20,7 @@ SMS is the only rail that can recover spending from before installation.
 |---|---|
 | Public repo with real source | [gitlab.com/p4r1ch4y-group/SpendLens](https://gitlab.com/p4r1ch4y-group/SpendLens) — verified: anonymous clone succeeds |
 | FOSS licence file | `LICENSE` — GPL-3.0 |
-| Version tag per release | `v0.1.3-alpha` (versionCode 4) |
+| Version tag per release | `v0.1.4-alpha` (versionCode 5) |
 | Builds from a clean checkout | **verified** — anonymous clone at the tag builds `app-standard-release-unsigned.apk`, which is exactly what F-Droid signs |
 | Only FOSS dependencies | verified, see below |
 | No Google Play Services / Firebase | none — the app has no `INTERNET` permission at all |
@@ -109,7 +109,7 @@ just assumed:
 
 ```bash
 # the exact operation F-Droid's build server performs
-git clone --branch v0.1.3-alpha --depth 1 \
+git clone --branch v0.1.4-alpha --depth 1 \
   https://gitlab.com/p4r1ch4y-group/SpendLens.git
 cd SpendLens && ./gradlew assembleStandardRelease
 # -> app-standard-release-unsigned.apk
