@@ -104,8 +104,8 @@ appears once rather than twice. Everything else on that sheet is the parser's
 conclusion; this is the evidence, so a wrong amount can be seen for what it is
 rather than taken on faith.
 
-**Insights** — filter by expense or income over 7/30/90/365 days; group by
-merchant, tag or payment type; sort by amount, count or name. A balance card
+**Insights** — filter by expense or income over 7/30/90/365 days or a range you
+pick; group by merchant, tag, payment type or **amount**; sort by amount, count or name. A balance card
 (in, out, net), a headline figure, stat tiles, spend-by-day columns, and ranked
 bars carrying each row's payment count and share of the total. One mark language
 throughout: magnitude is length, colour is emphasis only. No categorical
@@ -152,6 +152,21 @@ whose names say nothing, fall through to the form.
 
 **Manual entry** — amount, counterparty, direction, payment type, editable date
 and time.
+
+**More** — currency, **display size**, export, updates, and contacting the
+developer. Display size is a multiple of the phone's own setting rather than an
+override of it: the system dial moves every app at once, and someone who runs
+their whole phone small to fit more on screen still wants a ledger of amounts
+they can read. There is no in-app update check and there cannot be one — the app
+holds no INTERNET permission — so "check for a newer version" hands the question
+to a browser, the one component allowed to reach the network.
+
+**Restricted settings** — installed from an APK rather than a store, Android 13+
+greys out notification access and says only that "this setting is currently
+unavailable". SpendLens captures nothing until it is granted, so that install
+silently does nothing and looks broken. The app detects the condition (SDK 33+,
+no store installer) and offers the four taps that fix it, with a button straight
+to App info. Shown only where Android would actually be blocking it.
 
 **More** — currency, export, and contacting the developer. Currency is a display
 setting only: every payment keeps the currency it was captured in, so switching

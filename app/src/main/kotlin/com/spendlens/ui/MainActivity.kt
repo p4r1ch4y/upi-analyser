@@ -60,6 +60,7 @@ import com.spendlens.ui.dashboard.BudgetSheet
 import com.spendlens.ui.dashboard.DashboardActions
 import com.spendlens.ui.dashboard.DashboardScreen
 import com.spendlens.ui.dashboard.DashboardViewModel
+import com.spendlens.ui.dashboard.RangePickerDialog
 import com.spendlens.ui.dashboard.GroupBy
 import com.spendlens.ui.dashboard.SliceSelection
 import com.spendlens.data.SharedReceiptReader
@@ -68,6 +69,10 @@ import com.spendlens.ui.entry.SharedReceiptPrefill
 import com.spendlens.ui.entry.ImportSheet
 import com.spendlens.ui.entry.MoreSheet
 import com.spendlens.ui.entry.PrivacySheet
+import com.spendlens.ui.entry.RestrictedSettingSheet
+import com.spendlens.ui.entry.isLikelyRestricted
+import com.spendlens.ui.entry.openAppInfo
+import com.spendlens.ui.entry.openDownloadPage
 import com.spendlens.ui.entry.RenameSheet
 import com.spendlens.ui.entry.DEVELOPER_EMAIL
 import com.spendlens.ui.entry.openSite
@@ -177,8 +182,13 @@ class MainActivity : ComponentActivity() {
             // Collected before the theme so a change repaints everything.
             val themeMode by viewModel.themeMode.collectAsState()
             val typeface by viewModel.typeface.collectAsState()
+            val displayScale by viewModel.displayScale.collectAsState()
 
-            SpendLensTheme(themeMode = themeMode, typeface = typeface) {
+            SpendLensTheme(
+                themeMode = themeMode,
+                typeface = typeface,
+                displayScale = displayScale
+            ) {
                 val state by viewModel.state.collectAsState()
                 val dashboard by dashboardViewModel.state.collectAsState()
                 // Collected so a currency change redraws every amount on screen.
@@ -200,6 +210,8 @@ class MainActivity : ComponentActivity() {
                 // Null means "no sheet"; a present holder means "sheet open", and
                 // its budget is null when the sheet is creating rather than editing.
                 var budgetSheet by remember { mutableStateOf<BudgetSheetTarget?>(null) }
+                var showRestrictedSheet by remember { mutableStateOf(false) }
+                var showRangePicker by remember { mutableStateOf(false) }
 
                 // The Quick Settings tile lands here: open the newest payment so
                 // the note can be typed while the user still remembers what it
@@ -307,7 +319,18 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(bottom = padding.calculateBottomPadding()),
                             header = if (listenerEnabled) null else {
-                                { ConnectPrompt(onClick = ::openListenerSettings) }
+                                {
+                                    ConnectPrompt(
+                                        onClick = ::openListenerSettings,
+                                        // Only offered where Android would
+                                        // actually be blocking it, so a Play
+                                        // install never sees a fix for a problem
+                                        // it does not have.
+                                        onBlocked = if (isLikelyRestricted(context)) {
+                                            { showRestrictedSheet = true }
+                                        } else null
+                                    )
+                                }
                             }
                         )
 
@@ -318,6 +341,7 @@ class MainActivity : ComponentActivity() {
                                 onDirection = dashboardViewModel::setDirection,
                                 onGroupBy = dashboardViewModel::setGroupBy,
                                 onSortBy = dashboardViewModel::setSortBy,
+                                onPickRange = { showRangePicker = true },
                                 // A bar is a way in, not a dead end: it hands the
                                 // stream the group *and* the window, so the two
                                 // screens cannot disagree about the same figure.
@@ -479,6 +503,32 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                if (showRestrictedSheet) {
+                    RestrictedSettingSheet(
+                        onDismiss = { showRestrictedSheet = false },
+                        onOpenAppInfo = { if (!openAppInfo(this)) viewModel.reportNoBrowser() },
+                        onOpenListenerSettings = {
+                            showRestrictedSheet = false
+                            openListenerSettings()
+                        }
+                    )
+                }
+
+                if (showRangePicker) {
+                    RangePickerDialog(
+                        initial = dashboard.custom,
+                        onDismiss = { showRangePicker = false },
+                        onConfirm = { start, end ->
+                            dashboardViewModel.setCustomRange(start, end)
+                            showRangePicker = false
+                        },
+                        onClear = {
+                            dashboardViewModel.clearCustomRange()
+                            showRangePicker = false
+                        }
+                    )
+                }
+
                 if (showPrivacySheet) {
                     PrivacySheet(
                         onDismiss = { showPrivacySheet = false },
@@ -501,6 +551,8 @@ class MainActivity : ComponentActivity() {
                             dashboardViewModel.refresh()
                         },
                         onThemeMode = viewModel::setThemeMode,
+                        displayScale = displayScale,
+                        onDisplayScale = viewModel::setDisplayScale,
                         onTypeface = viewModel::setTypeface,
                         onExport = { includeSources ->
                             exportIncludesSources = includeSources
@@ -516,6 +568,10 @@ class MainActivity : ComponentActivity() {
                             if (!sendFeedback(this)) viewModel.reportNoEmailApp()
                         },
                         onOpenSite = { if (!openSite(this)) viewModel.reportNoBrowser() },
+                        onCheckForUpdates = {
+                            showMoreSheet = false
+                            if (!openDownloadPage(this)) viewModel.reportNoBrowser()
+                        },
                         onPrivacy = {
                             showMoreSheet = false
                             showPrivacySheet = true
@@ -728,6 +784,7 @@ private fun SliceSelection.toStreamFilter(rangeLabel: String) = StreamFilter(
         GroupBy.MERCHANT -> StreamFilter.Kind.MERCHANT
         GroupBy.TAG -> StreamFilter.Kind.TAG
         GroupBy.CHANNEL -> StreamFilter.Kind.CHANNEL
+        GroupBy.AMOUNT -> StreamFilter.Kind.AMOUNT
     },
     value = key,
     label = label,
@@ -820,7 +877,11 @@ private fun android.content.Context.describe(event: DayStreamEvent): String = wh
  * nothing, so this is the only state worth interrupting the stream for.
  */
 @Composable
-private fun ConnectPrompt(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ConnectPrompt(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onBlocked: (() -> Unit)? = null
+) {
     val colors = SpendTheme.colors
     val typography = MaterialTheme.typography
 
@@ -850,5 +911,19 @@ private fun ConnectPrompt(onClick: () -> Unit, modifier: Modifier = Modifier) {
             color = colors.review,
             modifier = Modifier.padding(top = 8.dp)
         )
+
+        // The second line is the one that matters on a sideloaded Android 13+
+        // phone, where the first leads to a toggle the system will not let the
+        // user touch and explains nothing about why.
+        onBlocked?.let { blocked ->
+            Text(
+                text = stringResource(R.string.restricted_prompt),
+                style = typography.bodySmall,
+                color = colors.review,
+                modifier = Modifier
+                    .clickable(onClick = blocked)
+                    .padding(top = 10.dp, bottom = 2.dp)
+            )
+        }
     }
 }

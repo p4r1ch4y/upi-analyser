@@ -11,6 +11,43 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+### Added
+
+- **Group the breakdown by amount.** "₹45 — 5 times · ₹225 altogether" answers a
+  question none of the other groupings can. A ledger of everyday payments is
+  mostly a short list of prices repeated — the same chai, the same auto fare, the
+  same subscription — and how *often* ₹100 leaves your account is a different and
+  more actionable fact than which shop it went to. Sorted by count by default,
+  because ranking it by total would just rebuild the merchant chart with worse
+  labels. Tapping a row opens every payment of that amount.
+- **Pick your own dates.** The preset chips answer "recently"; this answers "that
+  trip", "last April", "between the two salary dates". Future days are not
+  selectable — a range ending next month would divide a real total by days that
+  have not happened.
+- **A way past Android's restricted-settings block.** Installed from an APK
+  rather than a store, Android 13+ greys out notification access and explains
+  only that "this setting is currently unavailable". SpendLens captures *nothing*
+  until it is granted, so a sideloaded install silently does nothing and looks
+  broken. The app now detects the condition — SDK 33+, no store installer — and
+  offers the four taps that fix it, with a button straight to App info. Shown
+  only where Android would actually be blocking it.
+- **Display size, per app.** The system setting is one dial for every app at
+  once. Someone who runs their whole phone small to fit more on screen still
+  wants a ledger of amounts they can read; someone on the stock setting may find
+  this layout roomier than they want. Five steps, applied as a multiple of the
+  phone's own display size rather than an override of it.
+- **Check for a newer version**, which opens the download page in a browser.
+  There is no in-app update check and there cannot be one — the app holds no
+  INTERNET permission. Handing the question to a browser is the honest version.
+
+### Fixed
+
+- **The day and month rows collided at a large display size.** "1 tap · 1
+  merchant · +₹62,000 in" outgrew its half of the row and ran straight under
+  "Show", because `SpaceBetween` will happily overlap two children rather than
+  shrink either. Both rows now give the left group a weight and ellipsize.
+  Reproduced at 1.3× font on a 540dpi display and re-checked after the fix.
+
 ## [0.1.3-alpha] — 2026-08-01
 
 Measured against six months of one person's real ledger, and against a

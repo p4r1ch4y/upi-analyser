@@ -13,6 +13,18 @@
 
     <!-- Permission gate -->
     <string name="grant_notification_access">Grant notification access →</string>
+
+    <!-- Android 13+ restricted settings, which block a sideloaded app outright -->
+    <string name="restricted_title">Android is blocking the switch</string>
+    <string name="restricted_body">You installed SpendLens from an APK rather than a store, so Android 13 and later greys out notification access and says only \"this setting is currently unavailable\". It takes four taps to allow it. SpendLens captures nothing until you do.</string>
+    <string name="restricted_step_1">Open App info for SpendLens — the button below does it.</string>
+    <string name="restricted_step_2">Tap the ⋮ menu at the top right.</string>
+    <string name="restricted_step_3">Tap <b>Allow restricted settings</b>.</string>
+    <string name="restricted_step_4">Come back and grant notification access.</string>
+    <string name="restricted_open_app_info">Open App info</string>
+    <string name="restricted_then_grant">Already allowed it? Grant notification access →</string>
+    <string name="restricted_why">Android does this because notification access can read every notification on the phone. It is a reasonable thing to be careful about — which is why SpendLens has no internet permission at all, so what it reads cannot leave the device.</string>
+    <string name="restricted_prompt">Blocked by Android? Fix it →</string>
     
     <!-- Onboarding -->
     <string name="onboarding_welcome">The UPI tracker that can\'t leak your data</string>
@@ -123,6 +135,8 @@
     <string name="dash_expense">Expense</string>
     <string name="dash_income">Income</string>
     <string name="dash_range_year">1 year</string>
+    <string name="dash_range_custom">Pick dates…</string>
+    <string name="dash_range_clear">Back to presets</string>
     <string name="dash_spent_over">%1$d payments over %2$d days</string>
     <string name="dash_received_over">%1$d credits over %2$d days</string>
     <string name="dash_breakdown">Breakdown</string>
@@ -133,6 +147,8 @@
     <string name="group_merchant">Merchant</string>
     <string name="group_tag">Tag</string>
     <string name="group_channel">Payment type</string>
+    <string name="group_amount">Amount</string>
+    <string name="dash_amount_total">%1$s altogether</string>
     <string name="dash_net_out">Net out</string>
     <string name="dash_net_in">Net in</string>
     <string name="dash_nothing_grouped">Nothing to group here — tag some payments first.</string>
@@ -153,6 +169,16 @@
     <string name="action_more">More</string>
     <string name="settings_currency">Currency</string>
     <string name="settings_currency_note">Changes how amounts are shown. Payments keep the currency they were captured in, so nothing already recorded is reinterpreted.</string>
+    <string name="settings_display_size">Display size</string>
+    <string name="settings_display_size_note">Sizes this app relative to your phone\'s own display setting, so you can make it roomier or denser without changing every other app.</string>
+    <string name="settings_size_smallest">Densest</string>
+    <string name="settings_size_smaller">Denser</string>
+    <string name="settings_size_system">Match phone</string>
+    <string name="settings_size_larger">Roomier</string>
+    <string name="settings_size_largest">Roomiest</string>
+    <string name="settings_updates">Updates</string>
+    <string name="settings_updates_note">SpendLens cannot check for updates itself — it has no internet permission, which is the whole point. This opens the download page in your browser, where the newest build and its checksum are listed.</string>
+    <string name="settings_check_updates">Check for a newer version →</string>
     <string name="settings_export">Export your data</string>
     <string name="settings_export_note">Writes every payment to a CSV file you choose. This is the only way data leaves SpendLens — there is no backup yet, so keep one somewhere safe.</string>
     <string name="settings_export_sources">Include original messages</string>
@@ -255,6 +281,7 @@
     <string name="filter_kind_merchant">Payments to</string>
     <string name="filter_kind_tag">Tagged</string>
     <string name="filter_kind_channel">Paid by</string>
+    <string name="filter_kind_amount">Every payment of</string>
     <string name="filter_clear">Done</string>
     <string name="filter_no_matches">No payments here. They may have been renamed or deleted since.</string>
     <string name="filter_range_days">last %1$d days</string>

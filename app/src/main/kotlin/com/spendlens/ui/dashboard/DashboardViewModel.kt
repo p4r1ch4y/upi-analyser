@@ -29,6 +29,17 @@ enum class DashboardRange(val days: Long) {
     YEAR(365)
 }
 
+/**
+ * An explicit start and end the user picked.
+ *
+ * The preset chips answer "recently"; this answers "that trip", "last April",
+ * "between the two salary dates". Both ends inclusive, because that is how a
+ * person reads a date range they typed themselves.
+ */
+data class DateWindow(val start: LocalDate, val end: LocalDate) {
+    val days: Long get() = java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1
+}
+
 /** Money out, or money in. The whole report flips. */
 enum class SpendDirection { EXPENSE, INCOME }
 
@@ -39,7 +50,29 @@ enum class SpendDirection { EXPENSE, INCOME }
  * has no category model: a merchant name resolved from the payment itself is more
  * specific and needs no upkeep, and a tag is a category the user actually chose.
  */
-enum class GroupBy { MERCHANT, TAG, CHANNEL }
+enum class GroupBy {
+    MERCHANT,
+    TAG,
+    CHANNEL,
+
+    /**
+     * By the amount itself, most frequent first.
+     *
+     * The one grouping that answers "how many times have I spent ₹100?" A ledger
+     * of everyday payments is mostly a short list of prices repeated - the same
+     * chai, the same auto fare, the same subscription - and "₹45, forty times" is
+     * a different and more actionable fact than "₹1,800 went to that shop".
+     */
+    AMOUNT;
+
+    /**
+     * The sort this grouping is worth reading in.
+     *
+     * Amount-frequency is about the *count*; ranking it by total would just
+     * rebuild the merchant chart with worse labels.
+     */
+    val defaultSort: SortBy get() = if (this == AMOUNT) SortBy.COUNT else SortBy.AMOUNT
+}
 
 enum class SortBy { AMOUNT, COUNT, NAME }
 
@@ -84,8 +117,12 @@ data class DashboardUiState(
     val months: List<MonthBucket> = emptyList(),
     /** The window the report currently covers, so a tapped bar can carry it. */
     val sinceMillis: Long = 0L,
-    val untilMillis: Long = 0L
+    val untilMillis: Long = 0L,
+    /** Set when the user picked their own dates; the range chips then defer to it. */
+    val custom: DateWindow? = null
 ) {
+    /** How many days the report actually covers, preset or picked. */
+    val rangeDays: Long get() = custom?.days ?: range.days
     /** Everything needed to open the stream on one bar of the breakdown. */
     fun selectionFor(key: String, label: String) = SliceSelection(
         groupBy = groupBy,
@@ -158,7 +195,13 @@ data class DashboardUiState(
         get() = when (sortBy) {
             SortBy.AMOUNT -> slices.sortedByDescending { it.amountMinor }
             SortBy.COUNT -> slices.sortedByDescending { it.count }
-            SortBy.NAME -> slices.sortedBy { it.label.lowercase() }
+            // Amount labels are numbers wearing a string, so sorting them
+            // alphabetically would file ₹1,000 before ₹45.
+            SortBy.NAME -> if (groupBy == GroupBy.AMOUNT) {
+                slices.sortedBy { it.label.toLongOrNull() ?: Long.MAX_VALUE }
+            } else {
+                slices.sortedBy { it.label.lowercase() }
+            }
         }
 
     /**
@@ -167,6 +210,13 @@ data class DashboardUiState(
      * make every bar look small for a reason the reader cannot see.
      */
     fun shareOf(slice: SpendSlice): Float {
+        // Grouped by amount the bar's magnitude is how *often*, so the share
+        // beside it has to be a share of payments too. A bar measuring frequency
+        // next to a percentage measuring money contradicts itself on every row.
+        if (groupBy == GroupBy.AMOUNT) {
+            val payments = slices.sumOf { it.count }
+            return if (payments <= 0) 0f else slice.count.toFloat() / payments
+        }
         val total = groupTotalMinor
         return if (total <= 0L) 0f else (slice.amountMinor.toDouble() / total).toFloat()
     }
@@ -202,7 +252,8 @@ class DashboardViewModel(
         val range: DashboardRange = DashboardRange.MONTH,
         val direction: SpendDirection = SpendDirection.EXPENSE,
         val groupBy: GroupBy = GroupBy.MERCHANT,
-        val sortBy: SortBy = SortBy.AMOUNT
+        val sortBy: SortBy = SortBy.AMOUNT,
+        val custom: DateWindow? = null
     )
 
     private val query = MutableStateFlow(Query())
@@ -215,9 +266,27 @@ class DashboardViewModel(
         }
     }
 
-    fun setRange(value: DashboardRange) { query.value = query.value.copy(range = value) }
+    /** Picking a preset drops any custom window - they are two answers to one question. */
+    fun setRange(value: DashboardRange) {
+        query.value = query.value.copy(range = value, custom = null)
+    }
+
+    /**
+     * Reports over dates the user chose. Ends are swapped if they arrive
+     * backwards, because a picker that returns them out of order should not
+     * silently produce an empty report.
+     */
+    fun setCustomRange(start: LocalDate, end: LocalDate) {
+        val window = if (end.isBefore(start)) DateWindow(end, start) else DateWindow(start, end)
+        query.value = query.value.copy(custom = window)
+    }
+
+    fun clearCustomRange() { query.value = query.value.copy(custom = null) }
     fun setDirection(value: SpendDirection) { query.value = query.value.copy(direction = value) }
-    fun setGroupBy(value: GroupBy) { query.value = query.value.copy(groupBy = value) }
+    /** Switching grouping also switches to the sort that grouping is worth reading in. */
+    fun setGroupBy(value: GroupBy) {
+        query.value = query.value.copy(groupBy = value, sortBy = value.defaultSort)
+    }
 
     /** Sorting is a pure reshuffle of what is already loaded, so it never re-queries. */
     fun setSortBy(value: SortBy) {
@@ -297,11 +366,14 @@ class DashboardViewModel(
     private suspend fun load(q: Query) {
         _state.value = _state.value.copy(
             range = q.range, direction = q.direction, groupBy = q.groupBy, sortBy = q.sortBy,
-            loading = true
+            custom = q.custom, loading = true
         )
 
-        val end = today()
-        val start = end.minusDays(q.range.days - 1)
+        // A picked window wins over the chips. Its end is clamped to today so a
+        // range chosen into the future does not report an average over days that
+        // have not happened.
+        val end = q.custom?.end?.coerceAtMost(today()) ?: today()
+        val start = q.custom?.start ?: end.minusDays(q.range.days - 1)
         val since = start.atStartOfDay(zone).toInstant().toEpochMilli()
         val until = end.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
 
@@ -328,6 +400,7 @@ class DashboardViewModel(
             GroupBy.MERCHANT -> annotations.spendByMerchant(since, until, dir)
             GroupBy.TAG -> annotations.spendByTag(since, until, dir)
             GroupBy.CHANNEL -> annotations.spendByChannel(since, until, dir)
+            GroupBy.AMOUNT -> annotations.spendByAmount(since, until, dir)
         }
 
         _state.value = DashboardUiState(
@@ -335,6 +408,7 @@ class DashboardViewModel(
             direction = q.direction,
             groupBy = q.groupBy,
             sortBy = q.sortBy,
+            custom = q.custom,
             loading = false,
             buckets = SpendSeries.byDay(events, from = start, to = end, zone = zone),
             slices = slices,

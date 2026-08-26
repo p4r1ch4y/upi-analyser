@@ -8,6 +8,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -46,6 +49,19 @@ fun SpendLensTheme(
     themeMode: String = "SYSTEM",
     /** GROTESQUE or SERIF — see SettingsStore.TYPEFACES. */
     typeface: String = "GROTESQUE",
+    /**
+     * How large to draw, as a multiple of the phone's own display size.
+     *
+     * Applied by scaling [LocalDensity], which is what "display size" means to
+     * Android: a `dp` is `value * density` pixels and an `sp` is
+     * `value * fontScale * density`, so one multiplier moves text and layout
+     * together and nothing inside the app has to know about it.
+     *
+     * A multiplier rather than an absolute, because the system setting is still
+     * the user's choice - one dial for every app at once - and this refines it
+     * for this app instead of overriding it.
+     */
+    displayScale: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
     // An explicit choice overrides the system; SYSTEM follows it. Following the
@@ -73,7 +89,16 @@ fun SpendLensTheme(
         }
     }
 
-    CompositionLocalProvider(LocalSpendColors provides spendColors) {
+    val base = LocalDensity.current
+    val scaled = remember(base, displayScale) {
+        if (displayScale == 1.0f) base
+        else Density(density = base.density * displayScale, fontScale = base.fontScale)
+    }
+
+    CompositionLocalProvider(
+        LocalSpendColors provides spendColors,
+        LocalDensity provides scaled
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = typography,

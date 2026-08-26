@@ -115,7 +115,7 @@ data class StreamFilter(
     val credits: Boolean = false
 ) {
     /** [ALL] narrows by window alone, which is what a total budget is. */
-    enum class Kind { ALL, MERCHANT, TAG, CHANNEL }
+    enum class Kind { ALL, MERCHANT, TAG, CHANNEL, AMOUNT }
 
     fun matches(txn: TxnUi): Boolean {
         if (txn.occurredAt < sinceMillis || txn.occurredAt >= untilMillis) return false
@@ -127,6 +127,9 @@ data class StreamFilter(
             // The breakdown folds every unnamed rail into one "Other" bar, so the
             // filter behind it has to accept a null channel too.
             Kind.CHANNEL -> (txn.channel ?: UNKNOWN_CHANNEL) == value
+            // Matched on the effective amount, because that is what the
+            // breakdown grouped on - a split payment recurs at the user's share.
+            Kind.AMOUNT -> txn.effectiveMinor.toString() == value
         }
     }
 
@@ -280,6 +283,14 @@ class DayStreamViewModel(
 
     private val _typeface = MutableStateFlow(settings.typeface)
     val typeface: StateFlow<String> = _typeface.asStateFlow()
+
+    private val _displayScale = MutableStateFlow(settings.displayScale)
+    val displayScale: StateFlow<Float> = _displayScale.asStateFlow()
+
+    fun setDisplayScale(value: Float) {
+        settings.displayScale = value
+        _displayScale.value = settings.displayScale
+    }
 
     fun setThemeMode(value: String) {
         settings.themeMode = value

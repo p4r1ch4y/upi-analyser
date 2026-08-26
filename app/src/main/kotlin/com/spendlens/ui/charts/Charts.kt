@@ -57,7 +57,14 @@ data class BarDatum(
      * acting on the bar has to filter on the latter. Defaults to the label, which
      * is correct for merchants and tags.
      */
-    val key: String = label
+    val key: String = label,
+    /**
+     * Rendered instead of formatting [valueMinor] as money.
+     *
+     * A bar whose magnitude is a *count* has no money on that end of the row, and
+     * running the count through the money formatter turns "5 times" into "₹0.05".
+     */
+    val valueLabel: String? = null
 )
 
 /**
@@ -129,7 +136,7 @@ fun RankedBars(
                     // 3:1 against the surface on purpose, and a visible value is
                     // what makes that legal rather than merely quiet.
                     Text(
-                        text = money(row.valueMinor),
+                        text = row.valueLabel ?: money(row.valueMinor),
                         style = typography.bodySmall,
                         color = colors.ink
                     )
@@ -144,7 +151,7 @@ fun RankedBars(
                     )
                 }
 
-                val barDescription = "${row.label}: ${money(row.valueMinor)}" +
+                val barDescription = "${row.label}: ${row.valueLabel ?: money(row.valueMinor)}" +
                     (row.share?.let { ", ${(it * 100).toInt()} percent of the total" } ?: "")
 
                 Box(modifier = Modifier.fillMaxWidth().padding(top = 5.dp)) {

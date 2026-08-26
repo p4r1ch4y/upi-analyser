@@ -51,6 +51,26 @@ class SettingsStore(context: Context) {
         get() = prefs.getString(KEY_TYPEFACE, TYPE_GROTESQUE) ?: TYPE_GROTESQUE
         set(value) = prefs.edit().putString(KEY_TYPEFACE, value).apply()
 
+    /**
+     * How large the app draws itself, relative to the phone's own display size.
+     *
+     * A *multiplier*, not an absolute size, because the phone's setting is still
+     * the user's choice and this should refine it rather than override it. 1.0 is
+     * "exactly what the system says".
+     *
+     * It exists because the system setting is one dial for every app at once.
+     * Someone who runs their whole phone small to fit more on screen still wants
+     * a ledger of amounts they can read; someone on the stock setting may find a
+     * receipt-grammar layout roomier than they want. Both are reasonable and
+     * neither should have to change a system-wide setting to fix one app.
+     */
+    var displayScale: Float
+        get() = prefs.getFloat(KEY_DISPLAY_SCALE, DISPLAY_SCALE_DEFAULT)
+            .coerceIn(DISPLAY_SCALES.first(), DISPLAY_SCALES.last())
+        set(value) = prefs.edit()
+            .putFloat(KEY_DISPLAY_SCALE, value.coerceIn(DISPLAY_SCALES.first(), DISPLAY_SCALES.last()))
+            .apply()
+
     /** Pushes the stored preference into the formatter at startup. */
     fun applyToFormatter() {
         MoneyFormat.displayCurrency = currency
@@ -60,6 +80,7 @@ class SettingsStore(context: Context) {
         private const val KEY_CURRENCY = "currency"
         private const val KEY_THEME = "theme_mode"
         private const val KEY_TYPEFACE = "typeface"
+        private const val KEY_DISPLAY_SCALE = "display_scale"
 
         const val THEME_SYSTEM = "SYSTEM"
         const val THEME_LIGHT = "LIGHT"
@@ -72,6 +93,17 @@ class SettingsStore(context: Context) {
         const val TYPE_SERIF = "SERIF"
         val TYPEFACES = listOf(TYPE_GROTESQUE, TYPE_SERIF)
         const val DEFAULT_CURRENCY = "INR"
+
+        /**
+         * The steps offered, as multipliers of the system display size.
+         *
+         * Five, not a slider: a slider invites fiddling with a number nobody can
+         * predict the effect of, and the useful range here is narrow. The ends
+         * are deliberately modest - past about ±25% a layout built on a fixed
+         * grid stops being denser or roomier and just starts breaking.
+         */
+        val DISPLAY_SCALES = listOf(0.8f, 0.9f, 1.0f, 1.1f, 1.25f)
+        const val DISPLAY_SCALE_DEFAULT = 1.0f
 
         /**
          * Offered in the picker. Deliberately short and India-first rather than

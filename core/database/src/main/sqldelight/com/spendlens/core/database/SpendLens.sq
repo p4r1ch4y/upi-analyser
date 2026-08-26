@@ -425,6 +425,28 @@ GROUP BY t.display_name
 ORDER BY effective_minor DESC
 LIMIT :limit;
 
+-- How often each *amount* recurs.
+--
+-- Answers a question none of the other groupings can: "how many times have I
+-- spent ₹100?" A ledger of small payments is mostly a handful of prices repeated
+-- - the same chai, the same auto fare, the same subscription - and seeing that
+-- ₹45 happened forty times is a different fact from seeing ₹1,800 went to a shop.
+--
+-- Grouped on the *effective* amount, so a split payment recurs at the user's
+-- share rather than at a gross they never paid.
+selectSpendByAmount:
+SELECT coalesce(s.my_share_minor, t.amount_minor) AS label_minor,
+       SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
+       COUNT(*) AS txn_count
+FROM transactions t
+LEFT JOIN splits s ON s.txn_id = t.id
+WHERE t.occurred_at >= :since AND t.occurred_at < :until
+  AND t.direction = :direction AND t.deleted_at IS NULL
+  AND (t.flags & 128) = 0
+GROUP BY label_minor
+ORDER BY txn_count DESC, effective_minor DESC
+LIMIT :limit;
+
 selectSpendByChannel:
 SELECT coalesce(t.channel, 'UNKNOWN') AS label,
        SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,

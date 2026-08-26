@@ -56,11 +56,14 @@ fun MoreSheet(
     onDismiss: () -> Unit,
     onCurrency: (String) -> Unit,
     onThemeMode: (String) -> Unit,
+    displayScale: Float,
+    onDisplayScale: (Float) -> Unit,
     onTypeface: (String) -> Unit,
     onExport: (includeSourceMessages: Boolean) -> Unit,
     onFeedback: () -> Unit,
     onPrivacy: () -> Unit,
     onOpenSite: () -> Unit,
+    onCheckForUpdates: () -> Unit,
     onCopyEmail: () -> Unit
 ) {
     val colors = SpendTheme.colors
@@ -127,6 +130,32 @@ fun MoreSheet(
                     onTypeface(SettingsStore.TYPE_SERIF)
                 }
             }
+            // Display size, beside the theme rather than buried: the system
+            // setting is one dial for every app at once, and someone who runs
+            // their whole phone small to fit more on screen still wants a ledger
+            // of amounts they can read.
+            Text(
+                text = stringResource(R.string.settings_display_size),
+                style = typography.bodySmall,
+                color = colors.graphite,
+                modifier = Modifier.padding(top = 14.dp, bottom = 6.dp)
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (scale in SettingsStore.DISPLAY_SCALES) {
+                    OptionChip(
+                        label = displayScaleLabel(scale),
+                        selected = kotlin.math.abs(displayScale - scale) < 0.01f,
+                        onClick = { onDisplayScale(scale) }
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.settings_display_size_note),
+                style = typography.bodySmall,
+                color = colors.graphite,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+
             Text(
                 text = stringResource(R.string.settings_typeface_note),
                 style = typography.labelSmall,
@@ -221,6 +250,22 @@ fun MoreSheet(
                 onClick = onOpenSite
             )
 
+            // ------------------------------------------------------- updates
+            //
+            // There is no in-app update check and there cannot be one: the app
+            // holds no INTERNET permission. Handing the question to a browser is
+            // the honest version of the feature.
+            SectionLabel(stringResource(R.string.settings_updates), top = 26.dp)
+            Text(
+                text = stringResource(R.string.settings_updates_note),
+                style = typography.bodySmall,
+                color = colors.graphite
+            )
+            ActionRow(
+                text = stringResource(R.string.settings_check_updates),
+                onClick = onCheckForUpdates
+            )
+
             // ---------------------------------------------------------- about
             Text(
                 text = stringResource(
@@ -234,6 +279,16 @@ fun MoreSheet(
             )
         }
     }
+}
+
+/** Relative, because the phone's own display size is still the starting point. */
+@Composable
+private fun displayScaleLabel(scale: Float): String = when {
+    scale < 0.85f -> stringResource(R.string.settings_size_smallest)
+    scale < 0.95f -> stringResource(R.string.settings_size_smaller)
+    scale < 1.05f -> stringResource(R.string.settings_size_system)
+    scale < 1.15f -> stringResource(R.string.settings_size_larger)
+    else -> stringResource(R.string.settings_size_largest)
 }
 
 @Composable
@@ -350,10 +405,24 @@ fun sendFeedback(context: Context): Boolean {
 }
 
 /** Opens the project site in whatever browser the user has. */
-fun openSite(context: Context): Boolean {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(DEVELOPER_SITE))
+fun openSite(context: Context): Boolean = openUrl(context, DEVELOPER_SITE)
+
+/** Opens the download page, where the newest build and its checksum are listed. */
+fun openDownloadPage(context: Context): Boolean = openUrl(context, DOWNLOAD_PAGE)
+
+private fun openUrl(context: Context, url: String): Boolean {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
     return runCatching { context.startActivity(intent) }.isSuccess
 }
 
 const val DEVELOPER_EMAIL = "iamcsubrata@gmail.com"
 const val DEVELOPER_SITE = "https://p4r1ch4y.github.io/SpendLens/"
+
+/**
+ * The download section of the project site.
+ *
+ * SpendLens has no internet permission, so it cannot check for updates itself -
+ * and that is the point, not an omission. What it can do is hand the question to
+ * a browser, which is the only component here allowed to reach the network.
+ */
+const val DOWNLOAD_PAGE = "https://p4r1ch4y.github.io/SpendLens/#download"

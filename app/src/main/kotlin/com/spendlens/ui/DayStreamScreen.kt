@@ -322,6 +322,7 @@ private fun FilterHeader(
                             StreamFilter.Kind.MERCHANT -> R.string.filter_kind_merchant
                             StreamFilter.Kind.TAG -> R.string.filter_kind_tag
                             StreamFilter.Kind.CHANNEL -> R.string.filter_kind_channel
+                            StreamFilter.Kind.AMOUNT -> R.string.filter_kind_amount
                         }
                     ).uppercase(Locale.ROOT),
                     style = typography.labelSmall,
@@ -361,7 +362,10 @@ private fun FilterHeader(
                 text = pluralStringResource(R.plurals.tap_count, matchCount, matchCount) +
                     " · " + filter.rangeLabel,
                 style = typography.bodySmall,
-                color = colors.graphite
+                color = colors.graphite,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false).padding(start = 10.dp)
             )
         }
     }
@@ -413,30 +417,43 @@ private fun CollapsibleDay(
                     Text(
                         text = day.date.format(DAY_FORMAT).uppercase(Locale.ROOT),
                         style = typography.labelSmall,
-                        color = colors.graphite
+                        color = colors.graphite,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = money(day.spentMinor),
                     style = typography.displaySmall,
-                    color = colors.ink
+                    color = colors.ink,
+                    maxLines = 1
                 )
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // The left group has to yield. At a large display size or font
+                // scale "1 tap · 1 merchant · +₹62,000 in" outgrows its half of
+                // the row and SpaceBetween simply lets it run under "Show".
+                Row(
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
                         text = tapsAndMerchants(day.tapCount, day.merchantCount),
                         style = typography.bodySmall,
-                        color = colors.graphite
+                        color = colors.graphite,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     day.receivedMinor.takeIf { it > 0L }?.let { received ->
                         Text(
                             text = stringResource(R.string.day_received_in, money(received)),
                             style = typography.bodySmall,
-                            color = colors.credit
+                            color = colors.credit,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -445,7 +462,8 @@ private fun CollapsibleDay(
                         if (expanded) R.string.day_hide else R.string.day_show
                     ),
                     style = typography.bodySmall,
-                    color = colors.mist
+                    color = colors.mist,
+                    maxLines = 1
                 )
             }
         }

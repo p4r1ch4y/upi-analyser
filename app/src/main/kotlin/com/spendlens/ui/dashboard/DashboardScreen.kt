@@ -47,6 +47,8 @@ data class DashboardActions(
     val onDirection: (SpendDirection) -> Unit = {},
     val onGroupBy: (GroupBy) -> Unit = {},
     val onSortBy: (SortBy) -> Unit = {},
+    /** The user wants to pick their own start and end. */
+    val onPickRange: () -> Unit = {},
     /** A bar was tapped: open the payments behind it. */
     val onOpenSlice: (SliceSelection) -> Unit = {},
     val onOpenBudget: (BudgetProgress) -> Unit = {},
@@ -104,18 +106,34 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Chip(stringResource(R.string.dash_range_week), state.range == DashboardRange.WEEK) {
+            Chip(stringResource(R.string.dash_range_week), state.range == DashboardRange.WEEK && state.custom == null) {
                 actions.onRange(DashboardRange.WEEK)
             }
-            Chip(stringResource(R.string.dash_range_month), state.range == DashboardRange.MONTH) {
+            Chip(stringResource(R.string.dash_range_month), state.range == DashboardRange.MONTH && state.custom == null) {
                 actions.onRange(DashboardRange.MONTH)
             }
-            Chip(stringResource(R.string.dash_range_quarter), state.range == DashboardRange.QUARTER) {
+            Chip(stringResource(R.string.dash_range_quarter), state.range == DashboardRange.QUARTER && state.custom == null) {
                 actions.onRange(DashboardRange.QUARTER)
             }
-            Chip(stringResource(R.string.dash_range_year), state.range == DashboardRange.YEAR) {
+            Chip(stringResource(R.string.dash_range_year), state.range == DashboardRange.YEAR && state.custom == null) {
                 actions.onRange(DashboardRange.YEAR)
             }
+        }
+
+        // A picked window, shown as its own chip rather than hidden behind the
+        // presets. The chips answer "recently"; this answers "that trip", "last
+        // April", "between the two salary dates".
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Chip(
+                label = state.custom?.let {
+                    it.start.format(DAY_FORMAT) + " – " + it.end.format(DAY_FORMAT)
+                } ?: stringResource(R.string.dash_range_custom),
+                selected = state.custom != null,
+                onClick = actions.onPickRange
+            )
         }
 
         // ------------------------------------------------------------ headline
@@ -130,7 +148,7 @@ fun DashboardScreen(
                 if (state.direction == SpendDirection.EXPENSE) R.string.dash_spent_over
                 else R.string.dash_received_over,
                 state.headlineCount,
-                state.range.days
+                state.rangeDays
             ),
             style = typography.bodySmall,
             color = colors.graphite
@@ -293,6 +311,9 @@ fun DashboardScreen(
                 Chip(stringResource(R.string.group_channel), state.groupBy == GroupBy.CHANNEL) {
                     actions.onGroupBy(GroupBy.CHANNEL)
                 }
+                Chip(stringResource(R.string.group_amount), state.groupBy == GroupBy.AMOUNT) {
+                    actions.onGroupBy(GroupBy.AMOUNT)
+                }
             }
 
             Row(
@@ -335,6 +356,7 @@ fun DashboardScreen(
                                 GroupBy.MERCHANT -> R.plurals.group_total_merchant
                                 GroupBy.TAG -> R.plurals.group_total_tag
                                 GroupBy.CHANNEL -> R.plurals.group_total_channel
+                                GroupBy.AMOUNT -> R.plurals.group_total_amount
                             },
                             rows.size,
                             rows.size
@@ -351,9 +373,34 @@ fun DashboardScreen(
                 RankedBars(
                     data = rows.mapIndexed { index, slice ->
                         BarDatum(
-                            label = if (state.groupBy == GroupBy.CHANNEL) channelLabel(slice.label) else slice.label,
-                            valueMinor = slice.amountMinor,
-                            caption = pluralPayments(slice.count),
+                            label = when (state.groupBy) {
+                                GroupBy.CHANNEL -> channelLabel(slice.label)
+                                // The label *is* the amount, in minor units. The
+                                // repository leaves it a raw number because how
+                                // money is written is a display decision.
+                                GroupBy.AMOUNT -> money(slice.label.toLongOrNull() ?: 0L)
+                                else -> slice.label
+                            },
+                            // Grouped by amount, the interesting figure is how
+                            // often - so the bar carries the count and the
+                            // caption carries what it added up to.
+                            valueMinor = if (state.groupBy == GroupBy.AMOUNT) {
+                                slice.count.toLong()
+                            } else {
+                                slice.amountMinor
+                            },
+                            // Grouped by amount the row reads "₹45 — 5 times",
+                            // and what those five came to belongs underneath.
+                            valueLabel = if (state.groupBy == GroupBy.AMOUNT) {
+                                pluralTimes(slice.count)
+                            } else {
+                                null
+                            },
+                            caption = if (state.groupBy == GroupBy.AMOUNT) {
+                                stringResource(R.string.dash_amount_total, money(slice.amountMinor))
+                            } else {
+                                pluralPayments(slice.count)
+                            },
                             // Emphasis follows the largest bar, which is only the
                             // first row when sorting by amount.
                             emphasis = state.sortBy == SortBy.AMOUNT && index == 0,
@@ -524,6 +571,9 @@ private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
 
 private fun pluralPayments(count: Int): String =
     if (count == 1) "1 payment" else "$count payments"
+
+private fun pluralTimes(count: Int): String =
+    if (count == 1) "once" else "$count times"
 
 /**
  * Rail names as people say them. The app never renders the literal "Unknown" —

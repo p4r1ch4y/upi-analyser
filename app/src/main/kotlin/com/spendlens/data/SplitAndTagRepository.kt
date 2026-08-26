@@ -241,6 +241,21 @@ class SplitAndTagRepository(
         queries.selectSpendByMerchant(since, until, direction, limit.toLong()).executeAsList().map { it.toSlice() }
     }
 
+    /**
+     * How often each amount recurs, most frequent first.
+     *
+     * The label is the amount in *minor units, as a string*, because this
+     * repository has no business deciding how money is written - the currency and
+     * grouping are a display concern the UI owns. Callers format it.
+     */
+    suspend fun spendByAmount(
+        since: Long, until: Long, direction: String = "DEBIT", limit: Int = 40
+    ): List<SpendSlice> = withContext(io) {
+        queries.selectSpendByAmount(since, until, direction, limit.toLong())
+            .executeAsList()
+            .map { SpendSlice(it.label_minor.toString(), it.effective_minor ?: 0L, it.txn_count.toInt()) }
+    }
+
     suspend fun spendByChannel(since: Long, until: Long, direction: String = "DEBIT"): List<SpendSlice> =
         withContext(io) {
             queries.selectSpendByChannel(since, until, direction).executeAsList().map { it.toSlice() }

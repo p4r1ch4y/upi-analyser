@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -130,19 +131,35 @@ private fun MonthRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            Text(text = label, style = typography.bodySmall, color = colors.ink)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Same collision the day rows had: at a large font "+₹1,25,550" and
+            // "₹60,987.67" together outgrow their half of the row, and
+            // SpaceBetween lets them run under the month label rather than
+            // shrinking anything.
+            Text(
+                text = label,
+                style = typography.bodySmall,
+                color = colors.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            Row(
+                modifier = Modifier.weight(1f, fill = false),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 if (bucket.receivedMinor > 0L) {
                     Text(
                         text = "+" + money(bucket.receivedMinor),
                         style = typography.labelSmall,
-                        color = colors.credit
+                        color = colors.credit,
+                        maxLines = 1
                     )
                 }
                 Text(
                     text = money(bucket.spentMinor),
                     style = typography.bodySmall,
-                    color = if (bucket.spentMinor > 0L) colors.ink else colors.mist
+                    color = if (bucket.spentMinor > 0L) colors.ink else colors.mist,
+                    maxLines = 1
                 )
             }
         }

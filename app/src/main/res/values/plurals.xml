@@ -35,6 +35,10 @@
         <item quantity="one">%d payment type · total</item>
         <item quantity="other">%d payment types · total</item>
     </plurals>
+    <plurals name="group_total_amount">
+        <item quantity="one">%d distinct amount · total</item>
+        <item quantity="other">%d distinct amounts · total</item>
+    </plurals>
     <plurals name="rows_not_shown">
         <item quantity="one">%d smaller row not shown</item>
         <item quantity="other">%d smaller rows not shown</item>
