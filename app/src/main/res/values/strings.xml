@@ -257,6 +257,8 @@
     <string name="share_nothing">Nothing to add</string>
 
     <!-- Ongoing notification actions -->
+    <string name="nudge_add_note">What was it for?</string>
+    <string name="nudge_note_hint">Chai, auto fare, groceries…</string>
     <string name="notif_action_add">Add payment</string>
     <string name="notif_action_note">Note last</string>
 

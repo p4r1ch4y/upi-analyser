@@ -362,6 +362,19 @@ UPDATE splits SET settled_minor = :settledMinor WHERE id = :id;
 
 -- Tags -----------------------------------------------------------------------
 
+-- The tags actually used most, for the one-tap buttons on a payment nudge.
+--
+-- Ranked by use rather than alphabetically: the point of putting a tag on a
+-- notification is that it is the one the user reaches for anyway, and a list
+-- sorted by name would offer "Auto" to somebody who tags everything "Food".
+selectMostUsedTags:
+SELECT tg.name, COUNT(tt.txn_id) AS use_count
+FROM tags tg
+JOIN transaction_tags tt ON tt.tag_id = tg.id
+GROUP BY tg.id
+ORDER BY use_count DESC, tg.name
+LIMIT :limit;
+
 selectAllTags:
 SELECT * FROM tags ORDER BY kind DESC, name;
 

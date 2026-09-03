@@ -167,6 +167,15 @@
             </intent-filter>
         </service>
 
+        <!--
+          Tag or note a payment straight from its notification. Not exported:
+          only this app's own PendingIntents may fire it, and they are explicit.
+        -->
+        <receiver
+            android:name=".service.PaymentActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
         <!-- Boot Receiver -->
         <receiver
             android:name=".service.BootReceiver"

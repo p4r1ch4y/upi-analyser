@@ -11,6 +11,33 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+### Added
+
+- **Tag or note a payment from its notification.** The context of a payment has a
+  half-life of about a minute: "₹10, Airtel Payments Bank" is obvious while you
+  are still standing next to the auto, and unrecoverable a week later staring at
+  forty identical ₹10 rows. The nudge already fired within a second of the
+  payment — it was just a tap target. Now it carries a **direct-reply note** you
+  can type into the shade without leaving what you are doing, and up to two
+  **one-tap buttons for the tags you actually use most** (ranked by use, not
+  alphabetically — a name-sorted list would offer "Auto" to somebody who tags
+  everything "Food").
+
+  Measured on a real ledger before building it: of 161 payments in one month,
+  **149 were labelled only "Airtel Payments Bank" and exactly one carried a
+  note**. Opening the app, finding the row and typing into it is four actions at
+  the moment you are busiest, and the numbers say nobody does it.
+
+### Fixed
+
+- **Re-importing a SpendLens export silently destroyed the time of day.** The
+  export writes `Date` and `Time` as two columns; the importer read only the
+  first, so every re-imported payment was filed at midnight. Found on a real
+  ledger — 25 of 161 payments in one month sat at exactly 00:00 with the correct
+  time visible in each row's own stored source message. That matters more than it
+  sounds: "₹10 between 10am and 6pm is a fare" is a real way people read a ledger
+  of nameless rows, and it needs the clock.
+
 ## [0.1.4-alpha] — 2026-08-27
 
 Everything here was found or verified by running the build on a handset —

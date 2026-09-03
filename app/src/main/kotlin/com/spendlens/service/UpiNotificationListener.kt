@@ -108,16 +108,24 @@ class UpiNotificationListener : NotificationListenerService() {
                 when (result) {
                     is TransactionIngestor.Result.Duplicate -> Unit
                     is TransactionIngestor.Result.Merged ->
-                        nudge(result.displayName, result.amountMinor)
+                        nudge(result.displayName, result.amountMinor, result.id)
                     is TransactionIngestor.Result.Inserted ->
-                        nudge(result.txn.label(), result.txn.amount.amountMinor)
+                        nudge(result.txn.label(), result.txn.amount.amountMinor, result.txn.id.value)
                 }
             }
     }
 
-    private suspend fun nudge(displayName: String, amountMinor: Long) {
+    private suspend fun nudge(displayName: String, amountMinor: Long, txnId: String) {
         val dayTotal = graph.todayTotalMinor()
-        graph.nudgeNotifier.notifyPayment(displayName, amountMinor, dayTotal)
+        graph.nudgeNotifier.notifyPayment(
+            displayName = displayName,
+            amountMinor = amountMinor,
+            dayTotalMinor = dayTotal,
+            // Carried so the notification can annotate the row it is about,
+            // which is the whole point of asking while the context is fresh.
+            txnId = txnId,
+            quickTags = runCatching { graph.annotations.mostUsedTags() }.getOrDefault(emptyList())
+        )
         TransactionCaptureService.updateTodayTotal(this, dayTotal)
     }
 

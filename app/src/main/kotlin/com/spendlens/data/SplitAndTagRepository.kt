@@ -183,6 +183,17 @@ class SplitAndTagRepository(
             .groupBy({ it.txn_id }) { TagRef(it.id, it.name, it.kind == TAG_KIND_TRIP) }
     }
 
+    /**
+     * The tags this person actually reaches for, most-used first.
+     *
+     * Offered as one-tap buttons on a payment nudge. Ranked by use rather than
+     * alphabetically, because a list sorted by name would offer "Auto" to
+     * somebody who tags almost everything "Food".
+     */
+    suspend fun mostUsedTags(limit: Int = 2): List<String> = withContext(io) {
+        queries.selectMostUsedTags(limit.toLong()).executeAsList().map { it.name }
+    }
+
     suspend fun tagsFor(txnId: String): List<TagRef> = withContext(io) {
         queries.selectTagsForTxn(txnId).executeAsList().map { it.toRef() }
     }

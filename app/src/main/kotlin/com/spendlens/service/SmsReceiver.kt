@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
 import com.spendlens.SpendLensApp
+import com.spendlens.data.TransactionIngestor
 import com.spendlens.core.model.Source
 import com.spendlens.core.parser.ParserInput
 import kotlinx.coroutines.CoroutineScope
@@ -55,9 +56,20 @@ class SmsReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                graph.ingestor.ingest(raw)
+                val result = graph.ingestor.ingest(raw)
                 val dayTotal = graph.todayTotalMinor()
-                graph.nudgeNotifier.notifyPayment(raw.counterpartyNameRaw ?: sender, raw.amountMinor, dayTotal)
+                val txnId = when (result) {
+                    is TransactionIngestor.Result.Inserted -> result.txn.id.value
+                    is TransactionIngestor.Result.Merged -> result.id
+                    TransactionIngestor.Result.Duplicate -> null
+                }
+                graph.nudgeNotifier.notifyPayment(
+                    displayName = raw.counterpartyNameRaw ?: sender,
+                    amountMinor = raw.amountMinor,
+                    dayTotalMinor = dayTotal,
+                    txnId = txnId,
+                    quickTags = runCatching { graph.annotations.mostUsedTags() }.getOrDefault(emptyList())
+                )
                 TransactionCaptureService.updateTodayTotal(context, dayTotal)
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to ingest SMS", t)

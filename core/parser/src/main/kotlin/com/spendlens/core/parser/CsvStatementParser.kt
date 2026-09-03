@@ -63,6 +63,16 @@ object CsvStatementParser {
     /** Where each field lives in this particular export. */
     internal data class ColumnMap(
         val date: Int,
+        /**
+         * A separate time column, when the export has one.
+         *
+         * SpendLens's own export writes `Date` and `Time` as two columns, and
+         * this parser read only the first - so re-importing an export filed
+         * every payment at midnight and silently destroyed the time of day. That
+         * matters: "₹10 between 10am and 6pm is a bus fare" is a real way people
+         * read their own ledger, and it needs the clock.
+         */
+        val time: Int?,
         val description: Int?,
         val amount: Int?,
         val debit: Int?,
@@ -75,7 +85,16 @@ object CsvStatementParser {
             observedAt: Long,
             zone: ZoneId
         ): RawTxn? {
-            val occurredAt = cells.getOrNull(date)?.let { parseDate(it, zone) } ?: return null
+            val dateCell = cells.getOrNull(date) ?: return null
+            val timeCell = time?.let { cells.getOrNull(it) }?.trim()?.trim('"')
+            // Joined before parsing rather than added afterwards, so the existing
+            // date-time formats do the work and a malformed time simply falls
+            // back to the date alone instead of shifting anything.
+            val occurredAt = timeCell
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { parseDate("${dateCell.trim().trim('"')} $it", zone) }
+                ?: parseDate(dateCell, zone)
+                ?: return null
 
             val (amountMinor, direction) = when {
                 debit != null || credit != null -> {
@@ -124,6 +143,7 @@ object CsvStatementParser {
 
         companion object {
             private val DATE_HEADERS = listOf("txn date", "transaction date", "value date", "posted on", "date")
+            private val TIME_HEADERS = listOf("time", "txn time", "transaction time")
             private val DESCRIPTION_HEADERS =
                 listOf("description", "narration", "particulars", "details", "remarks", "merchant", "name")
             private val AMOUNT_HEADERS = listOf("transaction amount", "amount (inr)", "amount", "amt")
@@ -157,6 +177,7 @@ object CsvStatementParser {
                     amount = amount,
                     debit = debit,
                     credit = credit,
+                    time = find(TIME_HEADERS),
                     reference = find(REFERENCE_HEADERS)
                 )
             }
@@ -164,7 +185,9 @@ object CsvStatementParser {
     }
 
     private val DATE_TIME_FORMATS = listOf(
-        "yyyy-MM-dd HH:mm:ss", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm"
+        "yyyy-MM-dd HH:mm:ss", "dd/MM/yyyy HH:mm:ss", "dd-MM-yyyy HH:mm",
+        // SpendLens's own export shape, so a ledger round-trips with its clock.
+        "yyyy-MM-dd HH:mm", "dd/MM/yyyy HH:mm", "dd-MM-yyyy HH:mm:ss"
     ).map { DateTimeFormatter.ofPattern(it, Locale.ENGLISH) }
 
     private val DATE_FORMATS = listOf(
