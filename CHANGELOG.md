@@ -11,6 +11,12 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+## [0.1.5-alpha] — 2026-09-03
+
+Both changes came out of reading one real month of one real ledger: 161 payments
+between 5 August and 3 September, of which 149 were labelled only "Airtel
+Payments Bank" and exactly one carried a note.
+
 ### Added
 
 - **Tag or note a payment from its notification.** The context of a payment has a

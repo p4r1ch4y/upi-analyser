@@ -1,0 +1,7 @@
+Most bank SMS names no payee, so a row reads "₹10, Airtel Payments Bank" and
+means nothing a week later. The payment notification now asks while you still
+know: type a note straight into the shade, or tap one of the tags you use most.
+
+Also fixed: re-importing a SpendLens export filed every payment at midnight,
+because the export writes Date and Time as two columns and the importer read
+only the first.

@@ -1,6 +1,6 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 192 unit tests pass, lint is clean, and the app
+Alpha. Both flavours build, all 195 unit tests pass, lint is clean, and the app
 captures, stores and displays real payments end to end — verified on a physical
 device, not just in the test suite.
 
@@ -72,6 +72,12 @@ nudge**.
 - **Resolution** (`core/resolution`) — the 6-rung ladder. Never returns
   "Unknown". Naming a merchant writes a rule and replays it over every past
   payment to the same VPA.
+- **Nudge** — fires within a second of the payment, and *asks*. Most Indian bank
+  SMS names no payee, so what makes a row readable later is a tag or a note, and
+  the only person who can supply one is standing next to the shop right now. The
+  notification carries a direct-reply note and one-tap buttons for the tags used
+  most. Measured before building it: of 161 payments in one real month, 149 were
+  labelled only "Airtel Payments Bank" and exactly one carried a note.
 - **Persistence** (`core/database`) — SQLDelight over SQLCipher. The passphrase
   is 32 random bytes sealed with an AES-256-GCM key in the Android Keystore; only
   the wrapped blob reaches SharedPreferences.
