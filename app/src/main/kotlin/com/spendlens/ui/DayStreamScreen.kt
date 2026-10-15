@@ -516,7 +516,13 @@ private fun StreamRow(
                 timestamp = txn.occurredAt.asLocalTime(),
                 merchantName = txn.displayName,
                 amount = txn.amountLabel(),
-                amountColor = if (txn.isCredit) colors.credit else colors.ink,
+                // A duplicate is kept but not counted, so it reads de-emphasised -
+                // the same calm it would have if it were not there, without hiding it.
+                amountColor = when {
+                    txn.duplicate -> colors.mist
+                    txn.isCredit -> colors.credit
+                    else -> colors.ink
+                },
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 18.dp),
@@ -540,6 +546,19 @@ private fun StreamRow(
                 text = stringResource(R.string.failed_not_counted),
                 style = typography.bodySmall,
                 color = colors.review,
+                modifier = Modifier.padding(start = 62.dp, bottom = 9.dp)
+            )
+        }
+
+        // A later re-announcement of a payment already counted. Shown so the row
+        // the user saw is not missing, but in mist, not amber: nothing is wrong
+        // here and there is nothing to fix - the toggle to count it lives in the
+        // detail sheet, where a deliberate choice belongs.
+        if (txn.duplicate) {
+            Text(
+                text = stringResource(R.string.duplicate_not_counted),
+                style = typography.bodySmall,
+                color = colors.mist,
                 modifier = Modifier.padding(start = 62.dp, bottom = 9.dp)
             )
         }

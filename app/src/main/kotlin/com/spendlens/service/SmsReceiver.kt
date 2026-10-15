@@ -61,6 +61,9 @@ class SmsReceiver : BroadcastReceiver() {
                 val txnId = when (result) {
                     is TransactionIngestor.Result.Inserted -> result.txn.id.value
                     is TransactionIngestor.Result.Merged -> result.id
+                    // SMS never produces a stored duplicate (that guard is for
+                    // re-posted notifications), but the branch must exist.
+                    is TransactionIngestor.Result.StoredDuplicate -> null
                     TransactionIngestor.Result.Duplicate -> null
                 }
                 graph.nudgeNotifier.notifyPayment(

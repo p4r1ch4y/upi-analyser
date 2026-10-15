@@ -395,7 +395,8 @@ class MainActivity : ComponentActivity() {
                                 split = openSplit,
                                 tags = txn.tags,
                                 note = txn.note,
-                                sources = openSources
+                                sources = openSources,
+                                isDuplicate = txn.duplicate
                             ),
                             allTags = state.allTags,
                             onDismiss = { openTxnId = null; openSplit = null; openSources = emptyList() },
@@ -421,7 +422,14 @@ class MainActivity : ComponentActivity() {
                                 openTxnId = null
                             },
                             onRename = { renameTarget = id },
-                            onNote = { viewModel.setNote(id, it) }
+                            onNote = { viewModel.setNote(id, it) },
+                            onToggleDuplicate = { countIt ->
+                                // countIt == true means "this was a real payment":
+                                // clear the duplicate flag so it counts again.
+                                viewModel.setDuplicate(id, isDuplicate = !countIt)
+                                openTxnId = null
+                                dashboardViewModel.refresh()
+                            }
                         )
                     }
                 }

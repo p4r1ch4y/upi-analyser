@@ -7,8 +7,10 @@ import com.spendlens.core.database.SelectDayStats
 import com.spendlens.core.database.Source_messages
 import com.spendlens.core.database.SpendLensDatabase
 import com.spendlens.core.database.Transactions
+import com.spendlens.core.fusion.DuplicateKey
 import com.spendlens.core.fusion.SourceRef
 import com.spendlens.core.fusion.canFuseAcrossSources
+import com.spendlens.core.fusion.isDelayedDuplicate
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.FusedTxn
 import com.spendlens.core.model.RawTxn
@@ -118,6 +120,54 @@ class TransactionRepository(
             candidates.firstOrNull { it.counterparty_vpa != null && it.rrn?.endsWith(tail) == true }
         } ?: candidates.minByOrNull { kotlin.math.abs(it.occurred_at - at) }
     }
+
+    /**
+     * An already-counted payment this raw transaction is a late announcement of
+     * from another rail, or null if none.
+     *
+     * SQL narrows to same VPA, amount and direction inside [windowMillis];
+     * [isDelayedDuplicate] makes the call, so the rule that decides is the one
+     * the unit tests exercise. Above all it refuses a second notification from a
+     * source already on the stored payment: that is a repeat payment, not an echo.
+     */
+    suspend fun findDuplicateCandidate(raw: RawTxn, windowMillis: Long): Transactions? =
+        withContext(io) {
+            val vpa = raw.counterpartyVpa?.takeIf { it.isNotBlank() } ?: return@withContext null
+            val at = raw.occurredAt ?: raw.observedAt
+            val incoming = DuplicateKey(vpa, raw.amountMinor, raw.currency, raw.direction.name, at, raw.rrn)
+            val incomingSource = SourceRef(raw.source, raw.sourceOrigin)
+            queries.selectDuplicateCandidates(
+                vpa = vpa,
+                amountMinor = raw.amountMinor,
+                currency = raw.currency,
+                direction = raw.direction.name,
+                windowStart = at - windowMillis,
+                windowEnd = at + windowMillis
+            ).executeAsList().firstOrNull { row ->
+                isDelayedDuplicate(
+                    incoming = incoming,
+                    incomingSource = incomingSource,
+                    stored = DuplicateKey(
+                        row.counterparty_vpa, row.amount_minor, row.currency,
+                        row.direction, row.occurred_at, row.rrn
+                    ),
+                    storedSeenOn = seenOn(row.id),
+                    windowMillis = windowMillis
+                )
+            }
+        }
+
+    /**
+     * Flip a row between "duplicate, not counted" and "counts normally".
+     *
+     * The user has the final say: if a flagged re-post really was a second
+     * payment, [isDuplicate]=false folds it back into every total.
+     */
+    suspend fun setDuplicate(id: String, isDuplicate: Boolean, now: Long = System.currentTimeMillis()) =
+        withContext(io) {
+            if (isDuplicate) queries.markDuplicate(updated_at = now, id = id)
+            else queries.clearDuplicate(updated_at = now, id = id)
+        }
 
     /**
      * The rails and senders a stored payment has already been seen on.

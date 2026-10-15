@@ -47,6 +47,12 @@ data class TxnUi(
     val needsReview: Boolean,
     /** Attempted and did not go through. Shown, never counted. */
     val failed: Boolean = false,
+    /**
+     * A delayed re-announcement of a payment already in the ledger. Shown so the
+     * user knows the notification was seen, never counted, and reversible: the
+     * user can mark it as a genuine second payment.
+     */
+    val duplicate: Boolean = false,
     val note: String? = null,
     val counterpartyVpa: String?,
     /** The rail, as stored. Null when the message never said. */
@@ -211,7 +217,7 @@ data class DayStreamUiState(
             val credits = filter?.credits ?: false
             return days.sumOf { day ->
                 day.transactions
-                    .filter { it.isCredit == credits && !it.failed }
+                    .filter { it.isCredit == credits && !it.failed && !it.duplicate }
                     .sumOf { it.effectiveMinor }
             }
         }
@@ -586,6 +592,20 @@ class DayStreamViewModel(
         }
     }
 
+    /**
+     * Overrule the duplicate verdict on a payment.
+     *
+     * The app flags a probable re-announcement as a duplicate and leaves it out
+     * of every total; this is how the user says it was a genuine second payment
+     * (or confirms it was a duplicate). Clearing the flag folds it back into the
+     * totals, so the stream and dashboard are refreshed by the caller.
+     */
+    fun setDuplicate(txnId: String, isDuplicate: Boolean) {
+        viewModelScope.launch {
+            repository.setDuplicate(txnId, isDuplicate)
+        }
+    }
+
     /** The newest payment, for the quick-note tile. */
     suspend fun mostRecentId(): String? = repository.mostRecent()?.id
 
@@ -691,10 +711,10 @@ class DayStreamViewModel(
             DayUi(
                 date = date,
                 spentMinor = transactions
-                    .filter { !it.isCredit && !it.failed }
+                    .filter { !it.isCredit && !it.failed && !it.duplicate }
                     .sumOf { it.effectiveMinor },
                 receivedMinor = transactions
-                    .filter { it.isCredit && !it.failed }
+                    .filter { it.isCredit && !it.failed && !it.duplicate }
                     .sumOf { it.effectiveMinor },
                 transactions = transactions
             )
@@ -735,7 +755,7 @@ class DayStreamViewModel(
             name = trip.name,
             dayIndex = dayIndex,
             dayCount = dayCount,
-            spentMinor = transactions.filter { !it.isCredit && !it.failed }.sumOf { it.effectiveMinor }
+            spentMinor = transactions.filter { !it.isCredit && !it.failed && !it.duplicate }.sumOf { it.effectiveMinor }
         )
     }
 
@@ -748,6 +768,7 @@ class DayStreamViewModel(
         isCredit = direction == Direction.CREDIT.name,
         needsReview = (flags and FusedTxn.FLAG_NEEDS_REVIEW.toLong()) != 0L,
         failed = (flags and FusedTxn.FLAG_FAILED.toLong()) != 0L,
+        duplicate = (flags and FusedTxn.FLAG_DUPLICATE.toLong()) != 0L,
         note = note,
         counterpartyVpa = counterparty_vpa,
         channel = channel,

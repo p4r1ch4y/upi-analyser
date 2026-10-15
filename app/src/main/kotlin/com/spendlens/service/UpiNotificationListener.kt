@@ -94,7 +94,10 @@ class UpiNotificationListener : NotificationListenerService() {
                     "subText" to (extras.getCharSequence("android.subText")?.toString() ?: ""),
                     "tickerText" to (sbn.notification.tickerText?.toString() ?: "")
                 ),
-                timestamp = sbn.postTime
+                timestamp = sbn.postTime,
+                // Kept across a re-post of the same notification, where postTime
+                // is not. This is what tells a re-post from a second payment.
+                notificationWhen = sbn.notification.`when`
             )
         ).also {
             if (it == null) Log.w(TAG, "No template matched a notification from ${sbn.packageName}")
@@ -107,6 +110,9 @@ class UpiNotificationListener : NotificationListenerService() {
             .onSuccess { result ->
                 when (result) {
                     is TransactionIngestor.Result.Duplicate -> Unit
+                    // A delayed re-post of a payment already counted. Stored and
+                    // visible, but it is not new spending, so it does not nudge.
+                    is TransactionIngestor.Result.StoredDuplicate -> Unit
                     is TransactionIngestor.Result.Merged ->
                         nudge(result.displayName, result.amountMinor, result.id)
                     is TransactionIngestor.Result.Inserted ->

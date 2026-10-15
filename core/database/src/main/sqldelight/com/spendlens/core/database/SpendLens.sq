@@ -204,6 +204,7 @@ SELECT * FROM transactions
 WHERE amount_minor = :amountMinor
   AND currency = :currency
   AND direction = :direction
+  AND (flags & 256) = 0  -- never fold a rail into a row that is not counted
   AND occurred_at BETWEEN :windowStart AND :windowEnd
   AND deleted_at IS NULL
 ORDER BY occurred_at DESC;
@@ -212,6 +213,44 @@ selectByRrn:
 SELECT * FROM transactions
 WHERE rrn = :rrn AND deleted_at IS NULL
 LIMIT 1;
+
+-- Already-recorded, still-counting payments this incoming one could be a late
+-- announcement of, from another rail that arrived after fusion's short window.
+--
+-- This only narrows: isDelayedDuplicate (core/fusion) makes the call, and it
+-- refuses a second notification from a source already on the row, because that
+-- is a repeat payment. Matched on VPA (not amount alone) so two genuine
+-- same-price payments to *different* payees are never collapsed, and only
+-- against rows that are themselves counting - never another duplicate, a failed
+-- payment, or an excluded row.
+selectDuplicateCandidates:
+SELECT * FROM transactions
+WHERE counterparty_vpa = :vpa
+  AND amount_minor = :amountMinor
+  AND currency = :currency
+  AND direction = :direction
+  AND occurred_at >= :windowStart
+  AND occurred_at <= :windowEnd
+  AND (flags & 8) = 0      -- not already excluded
+  AND (flags & 128) = 0    -- not a failed payment
+  AND (flags & 256) = 0    -- not itself a duplicate
+  AND deleted_at IS NULL
+ORDER BY occurred_at;
+
+-- Flip a row between "duplicate, not counted" and "counts normally". The user
+-- gets the final say: if a flagged re-post was actually a genuine second
+-- payment, clearing the flag folds it back into every total.
+markDuplicate:
+UPDATE transactions
+SET flags = flags | 256,  -- FLAG_DUPLICATE
+    updated_at = :updated_at
+WHERE id = :id;
+
+clearDuplicate:
+UPDATE transactions
+SET flags = flags & ~256,  -- FLAG_DUPLICATE only: a user's own exclusion stays
+    updated_at = :updated_at
+WHERE id = :id;
 
 insertTransaction:
 INSERT INTO transactions (
@@ -309,6 +348,7 @@ WHERE occurred_at >= :dayStart
   AND direction = 'DEBIT'
   AND (flags & 8) = 0    -- FLAG_EXCLUDED
   AND (flags & 128) = 0  -- FLAG_FAILED: attempted, but the money never moved
+  AND (flags & 256) = 0  -- FLAG_DUPLICATE: a re-announcement of a counted payment
   AND deleted_at IS NULL;
 
 selectDayStats:
@@ -321,6 +361,8 @@ WHERE occurred_at >= :dayStart
   AND occurred_at < :dayEnd
   AND direction = 'DEBIT'
   AND (flags & 8) = 0
+  AND (flags & 128) = 0  -- FLAG_FAILED
+  AND (flags & 256) = 0  -- FLAG_DUPLICATE
   AND deleted_at IS NULL;
 
 
@@ -434,6 +476,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
 GROUP BY t.display_name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -456,6 +499,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
 GROUP BY label_minor
 ORDER BY txn_count DESC, effective_minor DESC
 LIMIT :limit;
@@ -469,6 +513,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
 GROUP BY label
 ORDER BY effective_minor DESC;
 
@@ -483,6 +528,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = :direction AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
 GROUP BY tg.name
 ORDER BY effective_minor DESC
 LIMIT :limit;
@@ -513,7 +559,8 @@ FROM transactions t
 LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
-  AND (t.flags & 128) = 0;
+  AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0;  -- FLAG_DUPLICATE
 
 selectSpendForMerchantBetween:
 SELECT SUM(coalesce(s.my_share_minor, t.amount_minor)) AS effective_minor,
@@ -523,6 +570,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
   AND t.display_name = :label;
 
 selectSpendForTagBetween:
@@ -535,6 +583,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.direction = 'DEBIT' AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
   AND tg.name = :label;
 
 -- One row per transaction, already reduced to what the user actually spent.
@@ -549,6 +598,7 @@ LEFT JOIN splits s ON s.txn_id = t.id
 WHERE t.occurred_at >= :since AND t.occurred_at < :until
   AND t.deleted_at IS NULL
   AND (t.flags & 128) = 0
+  AND (t.flags & 256) = 0  -- FLAG_DUPLICATE
 ORDER BY t.occurred_at;
 
 -- One-off label repair -------------------------------------------------------

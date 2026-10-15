@@ -53,6 +53,63 @@ private fun String?.equalsOrigin(other: String?): Boolean = when {
 }
 
 /**
+ * The minimum an incoming payment and a stored one must share to be read as the
+ * same money seen twice, rather than two different payments. Deliberately small:
+ * the caller supplies the stored row, this says whether it qualifies.
+ */
+data class DuplicateKey(
+    val counterpartyVpa: String?,
+    val amountMinor: Long,
+    val currency: String,
+    val direction: String,
+    val occurredAt: Long,
+    val rrn: String? = null
+)
+
+/**
+ * Whether an incoming payment is a *late announcement from another rail* of one
+ * already in the ledger, as opposed to a genuine second payment.
+ *
+ * This is the net for what fusion's short window misses: the same payment seen
+ * by a different app or the bank's SMS, arriving minutes after the first. A
+ * match is flagged as a probable duplicate (kept, not counted, reversible by the
+ * user) rather than silently double-counted.
+ *
+ * It never fires for a second notification from a source that already reported
+ * the stored payment. That is the rule fusion lives by: a UPI app posts one
+ * notification per payment, so the same app announcing the same payee and amount
+ * again is a second chai, not an echo. An app re-posting the *same* notification
+ * is caught earlier and exactly, by RawTxn.repostKey.
+ *
+ *  - A VPA is required on both sides. Without it there is nothing specific enough
+ *    to match on, and hiding a real payment is worse than keeping a duplicate.
+ *  - Amount, currency and direction must match exactly.
+ *  - Two different RRNs are two different payments. (The same RRN never gets
+ *    here: fusion merges it unconditionally.)
+ *  - The incoming source must not already be on the stored payment.
+ *  - The stored payment must fall within [windowMillis] of the incoming one.
+ */
+fun isDelayedDuplicate(
+    incoming: DuplicateKey,
+    incomingSource: SourceRef,
+    stored: DuplicateKey,
+    storedSeenOn: List<SourceRef>,
+    windowMillis: Long
+): Boolean {
+    val vpa = incoming.counterpartyVpa?.takeIf { it.isNotBlank() } ?: return false
+    val storedVpa = stored.counterpartyVpa?.takeIf { it.isNotBlank() } ?: return false
+    if (!vpa.equals(storedVpa, ignoreCase = true)) return false
+    if (incoming.amountMinor != stored.amountMinor) return false
+    if (incoming.currency != stored.currency) return false
+    if (incoming.direction != stored.direction) return false
+    val incomingRrn = incoming.rrn?.takeIf { it.isNotBlank() }
+    val storedRrn = stored.rrn?.takeIf { it.isNotBlank() }
+    if (incomingRrn != null && storedRrn != null && incomingRrn != storedRrn) return false
+    if (!canFuseAcrossSources(incomingSource, storedSeenOn)) return false
+    return kotlin.math.abs(incoming.occurredAt - stored.occurredAt) <= windowMillis
+}
+
+/**
  * Cross-source transaction fusion.
  * Merges fields rather than deduplicating - highest-trust source wins per field.
  */

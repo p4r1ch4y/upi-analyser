@@ -23,7 +23,12 @@ data class ParserInput(
     val title: String? = null,
     val body: String,
     val extras: Map<String, String> = emptyMap(),
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    /**
+     * A notification's own `when`, which survives the app re-posting it, unlike
+     * [timestamp] (the post time). Null for SMS and CSV. See RawTxn.repostKey.
+     */
+    val notificationWhen: Long? = null
 )
 
 class TemplateParser(initialTemplates: List<TransactionTemplate> = emptyList()) : TransactionParser {
@@ -173,7 +178,10 @@ data class TransactionTemplate(
             // against - this is shown to the user, so it should read exactly as
             // it did in their notification shade or inbox.
             sourceBody = input.body,
-            sourceOrigin = input.packageName ?: input.sender
+            sourceOrigin = input.packageName ?: input.sender,
+            repostKey = input.notificationWhen?.takeIf { it > 0 }?.let { posted ->
+                dedupeHash("repost|${input.packageName}|$text", posted)
+            }
         )
     }
 
@@ -372,6 +380,49 @@ object BuiltInTemplates {
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
 
+    /**
+     * A batched digest or periodic spending summary - never a single payment.
+     *
+     * Payment apps re-announce recent activity in a rolled-up notification, and
+     * these are poison to a parser built to read one payment per message:
+     *
+     *  - PhonePe: "2 new completed transaction updates. ₹40 has been sent to
+     *    a@upi and ₹50 has been sent to b@upi" - several payments, each already
+     *    captured when it happened, in one notification.
+     *  - End-of-day / evening recaps: "You spent ₹2,340 today", "Here's your
+     *    spending summary", "Daily summary".
+     *
+     * The catch-all would otherwise read the first amount it finds out of one of
+     * these and file it as a brand-new payment, double-counting money that moved
+     * once. Every payment in a digest was seen live on its own, so the whole
+     * notification is vetoed: nothing is lost by refusing it.
+     *
+     * Two independent triggers, deliberately narrow so a real payment is never
+     * caught:
+     *  - an explicit count of "transaction(s)/payment(s) update(s)", or
+     *  - summary/recap wording ("spending summary", "spent ... today",
+     *    "daily/weekly/monthly summary").
+     *
+     * The count must be a bare count, never an amount: "₹500 payment completed"
+     * and "Rs 200 transaction completed" are single payments, so a number that
+     * follows a currency marker or sits inside "1,200" does not trigger. And
+     * "transaction summary" / "payment summary" are left out, because a real
+     * payment notification can end with "View transaction summary".
+     */
+    private val DIGEST_SUMMARY = Regex(
+        """(?<![\d,.])(?<!(?:₹|INR|Rs\.?)\s{0,3})\b\d+\s+(?:new\s+)?(?:completed\s+)?(?:transaction|payment)s?\s+(?:updates?|completed)\b""" +
+            """|\b(?:spending|daily|weekly|monthly)\s+summary\b""" +
+            """|\bsummary\s+of\s+your\s+(?:transactions|payments|spending)\b""" +
+            """|\byou(?:'ve|\s+have)?\s+spent\s+(?:a\s+total\s+of\s+)?(?:₹|INR|Rs\.?)?\s*[\d,]+(?:\.\d{1,2})?\s+(?:today|this\s+(?:week|month)|so\s+far)\b""",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
+    /** The intention/failure veto plus the digest/summary veto, for notifications. */
+    private val NOTIF_VETO = Regex(
+        "(?:${NOT_A_TRANSACTION.pattern})|(?:${DIGEST_SUMMARY.pattern})",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+    )
+
     private val NOTIF = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     private val SMS = setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
 
@@ -410,8 +461,9 @@ object BuiltInTemplates {
         channel = Channel.UPI,
         // Notification templates had no veto at all, so a payment app announcing
         // "payment failed" was recorded as a completed payment and counted in the
-        // day's total. Found in real use.
-        veto = NOT_A_TRANSACTION,
+        // day's total. Found in real use. The notification veto also rejects
+        // batched digests and end-of-day summaries - see NOTIF_VETO / DIGEST_SUMMARY.
+        veto = NOTIF_VETO,
         failureMarker = FAILED_PAYMENT
     )
 
@@ -513,10 +565,10 @@ object BuiltInTemplates {
     // all with the string "9822014455@ybl" sitting in the name column. These must
     // therefore be offered before the free-text name shapes.
 
-    /** `₹80 paid to 9822014455@ybl` */
+    /** `₹80 paid to 9822014455@ybl`, `₹40 has been sent to alice@upi` */
     val debitToVpa = upi(
         id = "upi.debit.to-vpa.v1",
-        pattern = """$CUR\s*$AMOUNT\s+(?:paid|sent|debited)?\s*to\s+$VPA_GROUP""",
+        pattern = """$CUR\s*$AMOUNT\s+(?:(?:has\s+been\s+|is\s+)?(?:paid|sent|debited)\s+)?to\s+$VPA_GROUP""",
         direction = Direction.DEBIT
     )
 

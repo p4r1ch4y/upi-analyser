@@ -41,7 +41,17 @@ data class RawTxn(
      */
     val institution: String? = null,
     /** The message says this payment failed, was declined, or was reversed. */
-    val failed: Boolean = false
+    val failed: Boolean = false,
+    /**
+     * Identifies this exact notification across re-posts, or null when there is
+     * nothing stable to key on (SMS, CSV, a notification without a `when`).
+     *
+     * [bodyHash] folds in the post time, so an app re-posting the same
+     * notification later gets a fresh hash. This instead folds in the
+     * notification's own `when`, which a re-post keeps, so a second sighting is
+     * the same notification again rather than a second payment.
+     */
+    val repostKey: String? = null
 ) {
     /** Truncated hash for display */
     fun shortHash(): String = bodyHash.take(12)
@@ -93,6 +103,24 @@ data class FusedTxn(
          * version that survives being checked.
          */
         const val FLAG_FAILED = 128
+
+        /**
+         * A second announcement of a payment already in the ledger.
+         *
+         * Some payment apps re-post a completed payment later, or roll several
+         * recent payments into one "N new completed transaction updates"
+         * notification in the evening. Each of those payments was already
+         * captured when it happened, so counting the re-announcement again would
+         * inflate the day's spending with money that moved once.
+         *
+         * Kept in the ledger rather than dropped - the user saw the notification,
+         * and an app that shows nothing looks like it missed something - but
+         * excluded from every total, exactly like [FLAG_FAILED]: every query that
+         * skips failed rows skips this bit too. Deliberately independent of
+         * [FLAG_EXCLUDED], so the user flipping a duplicate back to counting never
+         * undoes an exclusion they made themselves.
+         */
+        const val FLAG_DUPLICATE = 256
     }
 
     fun hasFlag(flag: Int): Boolean = (flags and flag) != 0

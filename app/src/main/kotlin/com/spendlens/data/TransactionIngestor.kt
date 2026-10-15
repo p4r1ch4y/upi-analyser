@@ -23,6 +23,7 @@ class TransactionIngestor(
     private val repository: TransactionRepository,
     private val resolver: MerchantResolver = MerchantResolver(),
     private val fusionWindowMillis: Long = DEFAULT_FUSION_WINDOW_MILLIS,
+    private val duplicateWindowMillis: Long = DEFAULT_DUPLICATE_WINDOW_MILLIS,
     private val now: () -> Long = System::currentTimeMillis
 ) {
 
@@ -32,6 +33,14 @@ class TransactionIngestor(
 
         /** Folded into an existing row observed on another rail. */
         data class Merged(val id: String, val displayName: String, val amountMinor: Long) : Result
+
+        /**
+         * A late announcement, from another rail, of a payment already in the
+         * ledger. Stored so the user can see it, flagged [FusedTxn.FLAG_DUPLICATE]
+         * so it is never counted, and reversible: the user can mark it as a
+         * genuine payment.
+         */
+        data class StoredDuplicate(val txn: FusedTxn, val originalId: String) : Result
 
         data class Inserted(val txn: FusedTxn) : Result
     }
@@ -48,6 +57,7 @@ class TransactionIngestor(
         operator fun plus(result: Result): BatchSummary = when (result) {
             is Result.Inserted -> copy(inserted = inserted + 1)
             is Result.Merged -> copy(merged = merged + 1)
+            is Result.StoredDuplicate -> copy(duplicates = duplicates + 1)
             Result.Duplicate -> copy(duplicates = duplicates + 1)
         }
 
@@ -63,6 +73,10 @@ class TransactionIngestor(
         val timestamp = now()
 
         if (repository.markSeen(raw.bodyHash, timestamp)) return Result.Duplicate
+        // The same notification re-posted later: a fresh post time, so a fresh
+        // bodyHash, but the same `when`. Exactly the same message again, so it is
+        // dropped like any other re-delivery. See RawTxn.repostKey.
+        raw.repostKey?.let { if (repository.markSeen(it, timestamp)) return Result.Duplicate }
 
         val resolution = resolver.resolve(raw, userRules = rules ?: repository.userRules())
 
@@ -83,9 +97,23 @@ class TransactionIngestor(
             return Result.Merged(existing.id, displayName, existing.amount_minor)
         }
 
+        // No cross-rail sibling inside the fusion window. Before treating this as
+        // a brand-new payment, check whether another rail already reported it a
+        // little earlier. Only for notifications carrying a VPA, and never when
+        // the same source already reported the stored payment: that is a repeat
+        // payment. See isDelayedDuplicate.
+        val duplicateOf = if (raw.source == Source.NOTIFICATION) {
+            repository.findDuplicateCandidate(raw, duplicateWindowMillis)
+        } else {
+            null
+        }
+
         var flags = if (resolution.needsReview()) FusedTxn.FLAG_NEEDS_REVIEW else 0
         // Kept, but never counted. See FusedTxn.FLAG_FAILED.
         if (raw.failed) flags = flags or FusedTxn.FLAG_FAILED
+        // A late echo: kept and visible, flagged so no total double-counts it, and
+        // reversible by the user. See FLAG_DUPLICATE.
+        if (duplicateOf != null) flags = flags or FusedTxn.FLAG_DUPLICATE
 
         val txn = FusedTxn(
             id = TxnId.generate(timestamp),
@@ -105,7 +133,7 @@ class TransactionIngestor(
             channel = raw.channel,
             instrument = raw.instrument,
             flags = flags,
-            linkedTxnId = null,
+            linkedTxnId = duplicateOf?.id,
             note = null,
             createdAt = timestamp,
             updatedAt = timestamp
@@ -113,7 +141,11 @@ class TransactionIngestor(
 
         repository.insert(txn, templateId = raw.templateId, bodyHash = raw.bodyHash)
         repository.recordSource(txn.id.value, raw, timestamp)
-        return Result.Inserted(txn)
+        return if (duplicateOf != null) {
+            Result.StoredDuplicate(txn, originalId = duplicateOf.id)
+        } else {
+            Result.Inserted(txn)
+        }
     }
 
     /**
@@ -220,5 +252,15 @@ class TransactionIngestor(
     companion object {
         /** Both rails usually report the same payment within a minute of each other. */
         const val DEFAULT_FUSION_WINDOW_MILLIS: Long = 90_000
+
+        /**
+         * How late another rail's announcement of the same payment can land and
+         * still be read as an echo. Wider than the fusion window, which a slow
+         * bank notification can miss, but kept to hours: a match only flags the
+         * row, yet a long window would flag a real payment to the same payee via
+         * a different app later in the day. Same-app re-posts do not depend on
+         * this; RawTxn.repostKey catches those whenever they arrive.
+         */
+        const val DEFAULT_DUPLICATE_WINDOW_MILLIS: Long = 2L * 60 * 60 * 1000  // 2 hours
     }
 }

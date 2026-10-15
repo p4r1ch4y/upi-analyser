@@ -74,7 +74,9 @@ data class TransactionDetail(
     val split: Split?,
     val tags: List<TagRef>,
     val note: String? = null,
-    val sources: List<SourceRecord> = emptyList()
+    val sources: List<SourceRecord> = emptyList(),
+    /** A later re-announcement of a payment already in the ledger. Kept, not counted. */
+    val isDuplicate: Boolean = false
 )
 
 /**
@@ -97,6 +99,7 @@ fun TransactionDetailSheet(
     onDelete: () -> Unit,
     onRename: () -> Unit,
     onNote: (String?) -> Unit,
+    onToggleDuplicate: (Boolean) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault()
 ) {
     val colors = SpendTheme.colors
@@ -149,9 +152,21 @@ fun TransactionDetailSheet(
                 Text(
                     text = (if (detail.isCredit) "+" else "") + money(detail.amountMinor),
                     style = typography.displayMedium,
-                    color = if (detail.isCredit) colors.credit else colors.ink,
+                    color = when {
+                        detail.isDuplicate -> colors.mist
+                        detail.isCredit -> colors.credit
+                        else -> colors.ink
+                    },
+                    textDecoration = if (detail.isDuplicate) TextDecoration.LineThrough else null,
                     modifier = Modifier.padding(top = 12.dp)
                 )
+            }
+
+            // A duplicate re-announcement: say so, and let the user overrule it.
+            // The one place colour is not spent here - mist, not amber - because
+            // nothing is wrong; this is an informed choice, not a correction.
+            if (detail.isDuplicate) {
+                DuplicateToggle(onToggle = onToggleDuplicate, modifier = Modifier.padding(top = 16.dp))
             }
 
             // -------------------------------------------------------------- tags
@@ -688,6 +703,65 @@ private fun SuggestedTag(name: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 4.dp)
     )
+}
+
+/**
+ * The control that lets the user overrule the duplicate verdict.
+ *
+ * Eyebrow label, a plain explanation, and a switch - the same shape as the
+ * "apply to similar" control on the rename sheet, so the one interactive
+ * decision on this sheet reads the way the other one does. The track is ink, not
+ * violet: violet is reserved for split and trips, and spending it here would
+ * drain it of meaning.
+ */
+@Composable
+private fun DuplicateToggle(
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = SpendTheme.colors
+    val typography = MaterialTheme.typography
+    // Starts unchecked: the row is a duplicate until the user says otherwise.
+    // Flipping it on fires once and the sheet closes, so no local state is kept.
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(colors.paperSunk, RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.duplicate_label).uppercase(Locale.ROOT),
+            style = typography.labelSmall,
+            color = colors.graphite
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    text = stringResource(R.string.duplicate_count_this),
+                    style = typography.bodySmall,
+                    color = colors.ink
+                )
+                Text(
+                    text = stringResource(R.string.duplicate_explanation),
+                    style = typography.labelSmall,
+                    color = colors.mist,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Switch(
+                checked = false,
+                onCheckedChange = { onToggle(true) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.paper,
+                    checkedTrackColor = colors.ink
+                )
+            )
+        }
+    }
 }
 
 @Composable

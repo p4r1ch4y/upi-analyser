@@ -14,12 +14,19 @@ class TemplateParserTest {
 
     private val parser = TemplateParser(BuiltInTemplates.all())
 
-    private fun notification(pkg: String, title: String?, body: String, at: Long = AT) = ParserInput(
+    private fun notification(
+        pkg: String,
+        title: String?,
+        body: String,
+        at: Long = AT,
+        `when`: Long? = null
+    ) = ParserInput(
         source = Source.NOTIFICATION,
         packageName = pkg,
         title = title,
         body = body,
-        timestamp = at
+        timestamp = at,
+        notificationWhen = `when`
     )
 
     private fun sms(sender: String, body: String, at: Long = AT) = ParserInput(
@@ -298,7 +305,109 @@ class TemplateParserTest {
         assertNotEquals(morning!!.bodyHash, evening!!.bodyHash)
     }
 
+    // ------------------------------------------------- batched digests & summaries
+
+    /**
+     * The reported bug: PhonePe re-posts recent payments rolled into one evening
+     * notification. Each was already captured live, so the digest must produce
+     * nothing - otherwise its first amount is filed as a brand-new payment.
+     */
+    @Test
+    fun `a phonepe multi-payment digest is vetoed entirely`() {
+        assertNull(
+            parser.parse(
+                notification(
+                    "com.phonepe.app",
+                    "PhonePe",
+                    "2 new completed transaction updates. ₹40 has been sent to alice@upi " +
+                        "and ₹50 has been sent to bob@upi"
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `a single transaction-update digest is vetoed`() {
+        assertNull(
+            parser.parse(
+                notification("com.phonepe.app", "PhonePe", "1 new completed transaction update. ₹40 has been sent to alice@upi")
+            )
+        )
+    }
+
+    @Test
+    fun `an end-of-day spending summary is not captured as a payment`() {
+        assertNull(parser.parse(notification("com.phonepe.app", "PhonePe", "You spent ₹2,340 today")))
+        assertNull(parser.parse(notification("com.phonepe.app", "PhonePe", "Here's your spending summary")))
+        assertNull(parser.parse(notification("com.phonepe.app", "PhonePe", "Your daily summary is ready")))
+    }
+
+    /**
+     * The veto must stay narrow: a genuine single payment that merely contains
+     * the word "completed" or "summary"-adjacent chatter must still be captured.
+     */
+    @Test
+    fun `an ordinary single payment is still captured despite the digest veto`() {
+        val txn = parser.parse(
+            notification("com.phonepe.app", "PhonePe", "₹40 has been sent to alice@upi")
+        )
+        assertNotNull("a single payment must survive the digest veto", txn)
+        assertEquals(4_000L, txn!!.amountMinor)
+        assertEquals("alice@upi", txn.counterpartyVpa)
+        assertEquals(Direction.DEBIT, txn.direction)
+    }
+
+    @Test
+    fun `payment of eighty to a named shop is still captured`() {
+        val txn = parser.parse(notification("com.phonepe.app", "PhonePe", "Payment of ₹80 to Chai stall is successful"))
+        assertNotNull(txn)
+        assertEquals(8_000L, txn!!.amountMinor)
+    }
+
+    /**
+     * The digest count must never be read off an amount. Each of these is one
+     * real payment whose wording brushes against the digest veto.
+     */
+    @Test
+    fun `single payments that look like a digest count are still captured`() {
+        listOf(
+            "Paid ₹500 payment completed" to 50_000L,
+            "Sent Rs 200 transaction completed successfully" to 20_000L,
+            "₹1,200 paid to swiggy@icici. View transaction summary" to 120_000L
+        ).forEach { (body, amount) ->
+            val txn = parser.parse(notification("com.phonepe.app", "PhonePe", body))
+            assertNotNull("vetoed a real payment: $body", txn)
+            assertEquals(body, amount, txn!!.amountMinor)
+        }
+    }
+
+    // ------------------------------------------------------------ re-post key
+
+    @Test
+    fun `a re-post of the same notification shares a repost key but not a body hash`() {
+        val body = "₹40 has been sent to alice@upi"
+        val original = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT, `when` = AT))
+        val repost = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT + 6 * HOUR, `when` = AT))
+        assertNotEquals(original!!.bodyHash, repost!!.bodyHash)
+        assertNotNull(original.repostKey)
+        assertEquals(original.repostKey, repost.repostKey)
+    }
+
+    @Test
+    fun `a second identical payment is a new notification with a new repost key`() {
+        val body = "₹20 has been sent to chai@ybl"
+        val first = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT, `when` = AT))
+        val second = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT + HOUR, `when` = AT + HOUR))
+        assertNotEquals(first!!.repostKey, second!!.repostKey)
+    }
+
+    @Test
+    fun `no notification when means no repost key`() {
+        assertNull(parser.parse(notification("com.phonepe.app", "PhonePe", "₹40 has been sent to alice@upi"))!!.repostKey)
+    }
+
     private companion object {
         const val AT = 1_700_000_000_000L
+        const val HOUR = 60L * 60 * 1000
     }
 }
