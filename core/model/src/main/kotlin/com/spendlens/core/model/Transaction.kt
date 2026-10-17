@@ -121,6 +121,15 @@ data class FusedTxn(
          * undoes an exclusion they made themselves.
          */
         const val FLAG_DUPLICATE = 256
+
+        /**
+         * The user looked at a row flagged [FLAG_DUPLICATE] and said it counts.
+         *
+         * Recorded so no automatic pass ever flags that row again: the launch-time
+         * repair that flags already-stored digests would otherwise undo the
+         * user's decision on every start.
+         */
+        const val FLAG_COUNT_CONFIRMED = 512
     }
 
     fun hasFlag(flag: Int): Boolean = (flags and flag) != 0

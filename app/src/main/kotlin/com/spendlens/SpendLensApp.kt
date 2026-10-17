@@ -58,6 +58,9 @@ class SpendLensApp : Application() {
             // resolution ladder does nothing for rows already in the ledger.
             // Idempotent, so it costs one no-op statement per launch thereafter.
             runCatching { graph.repository.repairLabels() }
+            // Digests stored before the parser refused them are counted twice.
+            // Flagged, never deleted, and never against the user's own call.
+            runCatching { graph.repository.flagStoredDigests(BuiltInTemplates::isDigest) }
             // Every parser improvement is retroactive, because the message each
             // row was read from is stored beside it. Only labels change here -
             // never an amount, a direction or a date.

@@ -242,15 +242,41 @@ ORDER BY occurred_at;
 -- payment, clearing the flag folds it back into every total.
 markDuplicate:
 UPDATE transactions
-SET flags = flags | 256,  -- FLAG_DUPLICATE
+SET flags = (flags | 256) & ~512,  -- set FLAG_DUPLICATE, drop FLAG_COUNT_CONFIRMED
     updated_at = :updated_at
 WHERE id = :id;
 
+-- Clears only FLAG_DUPLICATE, so a user's own exclusion stays, and records
+-- FLAG_COUNT_CONFIRMED so no automatic pass flags the row again.
 clearDuplicate:
 UPDATE transactions
-SET flags = flags & ~256,  -- FLAG_DUPLICATE only: a user's own exclusion stays
+SET flags = (flags & ~256) | 512,
     updated_at = :updated_at
 WHERE id = :id;
+
+-- Rows stored before the digest veto existed, read from a payment app's batched
+-- "N new completed transaction updates" or an end-of-day summary, each one money
+-- already counted once. Only rows seen on nothing but notifications (a bank SMS
+-- means real money moved), not already flagged, and never one the user has
+-- confirmed counts. LIKE only narrows; BuiltInTemplates.isDigest decides, against
+-- every body the row has.
+selectDigestRepairCandidates:
+SELECT t.id, s.body
+FROM transactions t
+JOIN source_messages s ON s.txn_id = t.id
+WHERE (t.flags & 128) = 0   -- FLAG_FAILED
+  AND (t.flags & 256) = 0   -- FLAG_DUPLICATE
+  AND (t.flags & 512) = 0   -- FLAG_COUNT_CONFIRMED
+  AND t.deleted_at IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM source_messages o
+    WHERE o.txn_id = t.id AND o.source != 'NOTIFICATION'
+  )
+  AND EXISTS (
+    SELECT 1 FROM source_messages d
+    WHERE d.txn_id = t.id
+      AND (d.body LIKE '%update%' OR d.body LIKE '%summary%' OR d.body LIKE '%spent%')
+  );
 
 insertTransaction:
 INSERT INTO transactions (

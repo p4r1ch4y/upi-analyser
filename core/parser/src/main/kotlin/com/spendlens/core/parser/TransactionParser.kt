@@ -28,7 +28,15 @@ data class ParserInput(
      * A notification's own `when`, which survives the app re-posting it, unlike
      * [timestamp] (the post time). Null for SMS and CSV. See RawTxn.repostKey.
      */
-    val notificationWhen: Long? = null
+    val notificationWhen: Long? = null,
+    /**
+     * The notification's key (package, id and tag), which a re-post of the same
+     * notification keeps. Folded into the re-post key beside [notificationWhen],
+     * so an app that reuses one builder - every notification carrying the same
+     * `when` - still cannot have a second real payment mistaken for a re-post
+     * unless it also reused the notification id.
+     */
+    val notificationKey: String? = null
 )
 
 class TemplateParser(initialTemplates: List<TransactionTemplate> = emptyList()) : TransactionParser {
@@ -180,7 +188,7 @@ data class TransactionTemplate(
             sourceBody = input.body,
             sourceOrigin = input.packageName ?: input.sender,
             repostKey = input.notificationWhen?.takeIf { it > 0 }?.let { posted ->
-                dedupeHash("repost|${input.packageName}|$text", posted)
+                dedupeHash("repost|${input.packageName}|${input.notificationKey}|$text", posted)
             }
         )
     }
@@ -416,6 +424,13 @@ object BuiltInTemplates {
             """|\byou(?:'ve|\s+have)?\s+spent\s+(?:a\s+total\s+of\s+)?(?:₹|INR|Rs\.?)?\s*[\d,]+(?:\.\d{1,2})?\s+(?:today|this\s+(?:week|month)|so\s+far)\b""",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
     )
+
+    /**
+     * Whether [text] is a batched digest or spending summary rather than one
+     * payment. Public so rows stored before the veto existed can be checked
+     * against the same rule the parser now applies at ingest.
+     */
+    fun isDigest(text: String): Boolean = DIGEST_SUMMARY.containsMatchIn(text)
 
     /** The intention/failure veto plus the digest/summary veto, for notifications. */
     private val NOTIF_VETO = Regex(

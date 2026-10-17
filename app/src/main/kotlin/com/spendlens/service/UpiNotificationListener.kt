@@ -97,7 +97,8 @@ class UpiNotificationListener : NotificationListenerService() {
                 timestamp = sbn.postTime,
                 // Kept across a re-post of the same notification, where postTime
                 // is not. This is what tells a re-post from a second payment.
-                notificationWhen = sbn.notification.`when`
+                notificationWhen = sbn.notification.`when`,
+                notificationKey = sbn.key
             )
         ).also {
             if (it == null) Log.w(TAG, "No template matched a notification from ${sbn.packageName}")

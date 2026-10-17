@@ -314,6 +314,30 @@ class TransactionRepository(
     }
 
     /**
+     * Flags rows that were read out of a batched digest or spending summary
+     * before the parser learned to refuse those, and returns how many.
+     *
+     * Each such row is money already counted once, so the ledger has been
+     * double-counting it since. Flagged [FusedTxn.FLAG_DUPLICATE], not deleted:
+     * visible and reversible, the same as a duplicate caught at ingest. A row is
+     * flagged only when every message it was read from is a digest, and never
+     * once the user has confirmed it counts. Idempotent.
+     */
+    suspend fun flagStoredDigests(isDigest: (String) -> Boolean, now: Long = System.currentTimeMillis()): Int =
+        withContext(io) {
+            val digestIds = queries.selectDigestRepairCandidates().executeAsList()
+                .groupBy({ it.id }, { it.body })
+                .filterValues { bodies -> bodies.all(isDigest) }
+                .keys
+            if (digestIds.isNotEmpty()) {
+                database.transaction {
+                    digestIds.forEach { queries.markDuplicate(updated_at = now, id = it) }
+                }
+            }
+            digestIds.size
+        }
+
+    /**
      * Renames one payment.
      *
      * Where the payment carries a VPA, [nameMerchant] is better - it writes a rule

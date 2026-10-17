@@ -4,6 +4,7 @@ import com.spendlens.core.model.Channel
 import com.spendlens.core.model.Direction
 import com.spendlens.core.model.Source
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -19,14 +20,16 @@ class TemplateParserTest {
         title: String?,
         body: String,
         at: Long = AT,
-        `when`: Long? = null
+        `when`: Long? = null,
+        key: String? = null
     ) = ParserInput(
         source = Source.NOTIFICATION,
         packageName = pkg,
         title = title,
         body = body,
         timestamp = at,
-        notificationWhen = `when`
+        notificationWhen = `when`,
+        notificationKey = key
     )
 
     private fun sms(sender: String, body: String, at: Long = AT) = ParserInput(
@@ -399,6 +402,23 @@ class TemplateParserTest {
         val first = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT, `when` = AT))
         val second = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT + HOUR, `when` = AT + HOUR))
         assertNotEquals(first!!.repostKey, second!!.repostKey)
+    }
+
+    /** An app reusing one builder stamps every notification with the same `when`. */
+    @Test
+    fun `the same when on a different notification is not a re-post`() {
+        val body = "₹20 has been sent to chai@ybl"
+        val first = parser.parse(notification("com.phonepe.app", "PhonePe", body, `when` = AT, key = "0|com.phonepe.app|101|null|10123"))
+        val second = parser.parse(notification("com.phonepe.app", "PhonePe", body, at = AT + HOUR, `when` = AT, key = "0|com.phonepe.app|102|null|10123"))
+        assertNotEquals(first!!.repostKey, second!!.repostKey)
+    }
+
+    @Test
+    fun `stored rows are judged by the same digest rule the parser applies`() {
+        assertTrue(BuiltInTemplates.isDigest("2 new completed transaction updates. ₹40 has been sent to alice@upi"))
+        assertTrue(BuiltInTemplates.isDigest("You spent ₹2,340 today"))
+        assertFalse(BuiltInTemplates.isDigest("₹40 has been sent to alice@upi"))
+        assertFalse(BuiltInTemplates.isDigest("₹1,200 paid to swiggy@icici. View transaction summary"))
     }
 
     @Test
