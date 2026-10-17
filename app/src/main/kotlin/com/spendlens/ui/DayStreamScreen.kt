@@ -182,7 +182,7 @@ fun DayStreamScreen(
 
                 TapBar(
                     transactions = today?.transactions
-                        ?.filter { !it.isCredit && !it.failed }
+                        ?.filter { !it.isCredit && it.counted }
                         ?.map { TapBarItem(it.effectiveMinor) }
                         .orEmpty(),
                     modifier = Modifier.padding(top = 14.dp)

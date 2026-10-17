@@ -71,6 +71,9 @@ data class TxnUi(
      */
     val effectiveMinor: Long get() = split?.myShareMinor ?: amountMinor
 
+    /** In the totals: neither a failed attempt nor a duplicate re-announcement. */
+    val counted: Boolean get() = !failed && !duplicate
+
     val isSplit: Boolean get() = split != null
 
     /**
@@ -217,7 +220,7 @@ data class DayStreamUiState(
             val credits = filter?.credits ?: false
             return days.sumOf { day ->
                 day.transactions
-                    .filter { it.isCredit == credits && !it.failed && !it.duplicate }
+                    .filter { it.isCredit == credits && it.counted }
                     .sumOf { it.effectiveMinor }
             }
         }
@@ -711,10 +714,10 @@ class DayStreamViewModel(
             DayUi(
                 date = date,
                 spentMinor = transactions
-                    .filter { !it.isCredit && !it.failed && !it.duplicate }
+                    .filter { !it.isCredit && it.counted }
                     .sumOf { it.effectiveMinor },
                 receivedMinor = transactions
-                    .filter { it.isCredit && !it.failed && !it.duplicate }
+                    .filter { it.isCredit && it.counted }
                     .sumOf { it.effectiveMinor },
                 transactions = transactions
             )
@@ -755,7 +758,7 @@ class DayStreamViewModel(
             name = trip.name,
             dayIndex = dayIndex,
             dayCount = dayCount,
-            spentMinor = transactions.filter { !it.isCredit && !it.failed && !it.duplicate }.sumOf { it.effectiveMinor }
+            spentMinor = transactions.filter { !it.isCredit && it.counted }.sumOf { it.effectiveMinor }
         )
     }
 
