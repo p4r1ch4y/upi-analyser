@@ -227,6 +227,7 @@
     <string name="duplicate_label">Duplicate</string>
     <string name="duplicate_explanation">This looks like a later re-announcement of a payment already in your ledger, so it is not counted. Turn it on to count it.</string>
     <string name="duplicate_count_this">Count this payment</string>
+    <string name="action_mark_duplicate">Counted twice? Mark as duplicate</string>
 
     <!-- Appearance -->
     <string name="settings_appearance">Appearance</string>

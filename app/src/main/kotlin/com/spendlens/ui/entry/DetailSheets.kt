@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -269,6 +270,19 @@ fun TransactionDetailSheet(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(stringResource(R.string.action_delete))
+                }
+            }
+
+            // The other half of the duplicate toggle: a double count the app did
+            // not catch. Marking it keeps the row and its history, where deleting
+            // would lose both, and it can be switched back from the same sheet.
+            if (!detail.isDuplicate) {
+                TextButton(
+                    onClick = { onToggleDuplicate(false) },
+                    colors = ButtonDefaults.textButtonColors(contentColor = colors.graphite),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                ) {
+                    Text(stringResource(R.string.action_mark_duplicate), style = typography.bodySmall)
                 }
             }
         }
