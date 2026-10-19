@@ -151,6 +151,7 @@ dependencies {
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.sqldelight.sqlite.driver)
     // Host-side Compose rendering tests (no emulator), via Robolectric.
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.ext.junit)
