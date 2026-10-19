@@ -18,10 +18,21 @@ on:
   push:
     tags:
       - "v*"
+  # Re-run a release from an existing tag, using the workflow on the branch it
+  # is dispatched from. A tag-triggered run uses the workflow as it was in the
+  # tagged commit, so when that copy is broken this is the way to rebuild the
+  # release without moving a published tag.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and release, e.g. v0.1.6-alpha"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   release:
@@ -29,6 +40,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -39,6 +52,11 @@ jobs:
 
       - name: Set up the Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default also installs the legacy "tools" package, which current
+          # command-line tools no longer offer, and the step then fails. The
+          # build fetches the platforms and build-tools it needs by itself.
+          packages: platform-tools
 
       - name: Test and lint
         run: ./gradlew --no-daemon test lint
@@ -74,7 +92,7 @@ jobs:
         run: |
           mkdir -p dist
           for f in $(find app/build/outputs/apk -name "*release*.apk"); do
-            cp "$f" "dist/SpendLens-${GITHUB_REF_NAME}-$(basename "$f")"
+            cp "$f" "dist/SpendLens-${RELEASE_TAG}-$(basename "$f")"
           done
           cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt
           # An unsigned APK cannot be installed. Better to fail loudly here than
@@ -94,6 +112,7 @@ jobs:
           files: |
             dist/*.apk
             dist/SHA256SUMS.txt
+          tag_name: ${{ env.RELEASE_TAG }}
           body_path: .github/RELEASE_TEMPLATE.md
           draft: false
-          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') }}
+          prerelease: ${{ contains(env.RELEASE_TAG, 'alpha') || contains(env.RELEASE_TAG, 'beta') }}
