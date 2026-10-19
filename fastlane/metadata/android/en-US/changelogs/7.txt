@@ -1,0 +1,6 @@
+Some payment apps later re-announce payments they already reported, such as an
+evening "2 new completed transaction updates" notification. SpendLens counted
+those twice. They are now ignored, rows already counted that way are flagged as
+duplicates, and the same payment reported late by another app is shown but not
+counted. Repeat payments, like a second chai, still count. Any row can be
+marked as a duplicate, or counted again, from its detail sheet.

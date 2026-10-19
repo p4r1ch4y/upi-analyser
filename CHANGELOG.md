@@ -11,6 +11,35 @@ characters — this file is the long form.
 
 ## [Unreleased]
 
+## [0.1.6-alpha] - 2026-10-19
+
+### Fixed
+
+- **Payments re-announced later were counted twice.** PhonePe rolls recent
+  payments into a later notification such as "2 new completed transaction
+  updates. ₹40 has been sent to ...", and the catch-all parser filed its first
+  amount as a brand-new payment. Batched digests and end-of-day spending
+  summaries are now refused at ingest. The rule is narrow on purpose: an amount
+  followed by "payment completed", or a "View transaction summary" footer on a
+  real payment, does not trigger it.
+- **Rows already double-counted that way are repaired.** At launch, any row
+  whose every source message is a digest is flagged as a duplicate. Nothing is
+  deleted, and a row you have said counts is never flagged again.
+- **A notification re-posted by the same app is recognised.** The re-post keeps
+  the notification's own time and key, so it is dropped like any other
+  re-delivery, however much later it arrives.
+- **The today tap bar drew duplicate rows**, so its segments disagreed with the
+  day total.
+
+### Added
+
+- **Late reports from another app or the bank SMS are shown, not counted.** The
+  same payee and amount reported by a different source within two hours is
+  stored as "Duplicate · not counted". A second notification from the same app
+  is never flagged: that is a repeat payment, like a second chai.
+- **Mark any row as a duplicate, or count it again**, from its detail sheet. A
+  missed double count no longer has to be deleted along with its history.
+
 ## [0.1.5-alpha] — 2026-09-03
 
 Both changes came out of reading one real month of one real ledger: 161 payments

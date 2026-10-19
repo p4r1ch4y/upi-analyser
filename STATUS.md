@@ -1,6 +1,6 @@
 # SpendLens — Status
 
-Alpha. Both flavours build, all 195 unit tests pass, lint is clean, and the app
+Alpha. Both flavours build, all 232 unit tests pass, lint is clean, and the app
 captures, stores and displays real payments end to end — verified on a physical
 device, not just in the test suite.
 
